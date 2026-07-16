@@ -1,0 +1,64 @@
+# Local environment files
+.env
+.env.*
+!.env.sample
+
+# Dependencies and generated output
+node_modules/
+dist/
+coverage/
+
+# Logs and package-manager diagnostics
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Temporary files and caches
+tmp/
+temp/
+.cache/
+.eslintcache
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+*.bak
+
+# Editors and IDEs
+.vscode/
+.idea/
+*.iml
+
+# Operating-system metadata
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+
+# Local private keys, certificates, and certificate stores
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+*.ppk
+*.pem
+*.key
+*.crt
+*.cer
+*.cert
+*.der
+*.csr
+*.p12
+*.pfx
+*.pkcs12
+*.jks
+*.keystore
+*.truststore
+*.ca-bundle
+*.crt-bundle
+*.p7b
+*.p7c
