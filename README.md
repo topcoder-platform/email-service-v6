@@ -76,7 +76,7 @@ details.
 | `EMAIL_RETRY_CRON` | No | `0 */2 * * * *`; six-field cron including seconds |
 | `EMAIL_RETRY_MAX_AGE_MS` | No | `86400000` (24 hours); explicit values must be positive integers |
 | `DISABLE_KAFKA` | No | `false`; `true` disables consumer startup and reports Kafka as `disabled` |
-| `KAFKA_BROKERS` | Unless Kafka is disabled | Comma-separated broker addresses |
+| `KAFKA_URL` | Unless Kafka is disabled | Shared comma-separated, scheme-less `host:port` broker addresses from `/config/common/global-appvar` |
 | `KAFKA_CLIENT_ID` | Unless Kafka is disabled | Kafka client identity |
 | `KAFKA_GROUP_ID` | Unless Kafka is disabled | Consumer group identity |
 | `KAFKA_SSL_ENABLED` | Yes | Boolean; `true` enables local mTLS validation when Kafka is active |
@@ -89,7 +89,7 @@ details.
 | `KAFKA_RETRY_ATTEMPTS` | Yes | Positive integer reconnect budget |
 | `KAFKA_INITIAL_RETRY_TIME` | Yes | Positive integer initial backoff milliseconds |
 | `KAFKA_MAX_RETRY_TIME` | Yes | Positive integer maximum backoff milliseconds |
-| `KAFKA_MAX_BYTES` | Yes | Positive integer consumer fetch limit |
+| `KAFKA_MAXBYTES` | Yes | Shared positive integer consumer fetch limit from `/config/common/global-appvar` |
 | `KAFKA_MAX_WAIT_TIME` | Yes | Positive integer consumer wait milliseconds |
 
 When `DISABLE_KAFKA=true`, brokers, client ID, group ID, client certificate, and
@@ -158,9 +158,11 @@ always released after success or contained failure. This is not distributed
 coordination. `PENDING` attempts left by a process crash are never retried and
 may require manual operational cleanup.
 
-Deploy with an initial ECS desired count of exactly one. Horizontal scaling
-requires distributed retry coordination or a single dedicated retry worker;
-otherwise multiple processes can select and send the same failed attempt.
+Deploy with an ECS desired count of exactly one and retain stop-before-start
+rolling settings (`minimumHealthyPercent=0`, `maximumPercent=100`). Horizontal
+scaling or overlapping old and new tasks requires distributed retry coordination
+or a single dedicated retry worker; otherwise multiple processes can select and
+send the same failed attempt.
 
 ## Health endpoint
 
@@ -190,9 +192,10 @@ state. Unhealthy responses use the same schema with `status: "unhealthy"` and
 
 ## Container startup and deployment
 
-The image uses Node 22.18.0 and pnpm 9.15.9 and exposes port 3000. The executable
-`appStartUp.sh` uses fail-fast shell semantics and performs startup in this
-order:
+The multi-stage image uses Node 22.18.0, builds with pnpm 9.15.9, retains only
+production dependencies, runs as the unprivileged `node` user, and exposes the
+development service port 6100. The executable `appStartUp.sh` uses fail-fast
+shell semantics and performs startup in this order:
 
 1. Validate required database settings and normalize the connection URL.
 2. Bootstrap the configured PostgreSQL schema.
@@ -200,12 +203,32 @@ order:
 4. Execute the compiled application.
 
 Any schema bootstrap or migration failure stops application startup. Production
-sets `NODE_ENV=production`, so the application adds the `/v6` route prefix.
+sets `NODE_ENV=production`, so the application adds the `/v6` route prefix. An
+existing configured schema requires permission to use and migrate objects in
+that schema; database-level schema-creation permission is needed only when the
+schema is absent. Concurrent first-time starters safely accept a schema created
+by the other process after rechecking the final database state.
+
+The development ECS configuration retains the legacy service's port 6100, so
+the Parameter Store `PORT`, image metadata, and ECS container/target-group port
+remain aligned. The application default outside that deployment remains 3000.
+The `develop`
+CircleCI workflow builds the image, reads `/config/email-service-v6/deployvar`,
+registers a new task-definition revision, and updates the existing
+`email-service-v6` Fargate service. Runtime configuration comes from
+`/config/email-service-v6/appvar` and `/config/common/global-appvar`.
+
+CircleCI intentionally does not run CloudFormation or create the ECS cluster,
+service, or load-balancer routing. The one-time shared bootstrap is maintained
+in the sibling `topcoder-infrastructure-cloudformation` directory. The ECS
+desired count must remain exactly one and deployments must remain
+stop-before-start because retry scheduling is process-local.
 
 ## Migration from earlier services
 
 - Rename `TEMPLATE_MAP` to `EMAIL_TEMPLATE_MAP`.
-- Rename `KAFKA_URL` to `KAFKA_BROKERS` and use a comma-separated broker list.
+- Consume the shared `KAFKA_URL` and `KAFKA_MAXBYTES` variables directly; do
+  not duplicate them under the service-specific application path.
 - Remove `API_CONTEXT_PATH`; v6 owns its production prefix.
 
 There is no fallback to legacy environment names and no migration of Sequelize

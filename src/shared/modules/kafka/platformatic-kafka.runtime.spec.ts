@@ -29,7 +29,7 @@ function createValidatedRuntimeTls(): {
     SENDGRID_API_KEY: 'test-api-key',
     EMAIL_FROM: 'noreply@example.com',
     EMAIL_TEMPLATE_MAP: '{"notifications.email":"d-template-id"}',
-    KAFKA_BROKERS: 'localhost:9092',
+    KAFKA_URL: 'localhost:9092',
     KAFKA_CLIENT_ID: 'runtime-compatibility-test',
     KAFKA_GROUP_ID: 'runtime-compatibility-test',
     KAFKA_SSL_ENABLED: 'true',
@@ -42,7 +42,7 @@ function createValidatedRuntimeTls(): {
     KAFKA_RETRY_ATTEMPTS: '1',
     KAFKA_INITIAL_RETRY_TIME: '1',
     KAFKA_MAX_RETRY_TIME: '1',
-    KAFKA_MAX_BYTES: '1024',
+    KAFKA_MAXBYTES: '1024',
     KAFKA_MAX_WAIT_TIME: '100',
     DISABLE_KAFKA: 'false',
   });

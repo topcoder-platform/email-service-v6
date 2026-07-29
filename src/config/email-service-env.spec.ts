@@ -33,7 +33,7 @@ function createValidEnvironment(
     EMAIL_TEMPLATE_MAP: '{"notifications.email":"d-template-id"}',
     EMAIL_RETRY_CRON: '0 */5 * * * *',
     EMAIL_RETRY_MAX_AGE_MS: '86400000',
-    KAFKA_BROKERS: 'kafka-one:9092,kafka-two:9092',
+    KAFKA_URL: 'kafka-one:9092,kafka-two:9092',
     KAFKA_CLIENT_ID: 'email-service-v6',
     KAFKA_GROUP_ID: 'email-service-v6',
     KAFKA_SSL_ENABLED: 'false',
@@ -42,7 +42,7 @@ function createValidEnvironment(
     KAFKA_RETRY_ATTEMPTS: '5',
     KAFKA_INITIAL_RETRY_TIME: '300',
     KAFKA_MAX_RETRY_TIME: '30000',
-    KAFKA_MAX_BYTES: '1048576',
+    KAFKA_MAXBYTES: '1048576',
     KAFKA_MAX_WAIT_TIME: '5000',
     DISABLE_KAFKA: 'false',
     ...overrides,
@@ -100,10 +100,8 @@ describe('validateEmailServiceEnv', () => {
     const environment = validateEmailServiceEnv(createValidEnvironment());
 
     expect(environment.PORT).toBe(3000);
-    expect(environment.KAFKA_BROKERS).toEqual([
-      'kafka-one:9092',
-      'kafka-two:9092',
-    ]);
+    expect(environment.KAFKA_URL).toEqual(['kafka-one:9092', 'kafka-two:9092']);
+    expect(environment.KAFKA_MAXBYTES).toBe(1_048_576);
     expect(environment.EMAIL_TEMPLATE_OVERRIDE_KEY).toBe(
       'sendgrid_template_id',
     );
@@ -155,6 +153,15 @@ describe('validateEmailServiceEnv', () => {
       expect(() =>
         validateEmailServiceEnv(createValidEnvironment({ [name]: undefined })),
       ).toThrow(`${name} is required`);
+    },
+  );
+
+  it.each(['KAFKA_URL', 'KAFKA_MAXBYTES'])(
+    'fails when shared %s is missing',
+    (name) => {
+      expect(() =>
+        validateEmailServiceEnv(createValidEnvironment({ [name]: undefined })),
+      ).toThrow(name);
     },
   );
 
