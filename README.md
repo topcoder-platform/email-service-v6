@@ -28,7 +28,7 @@ Prisma is initialized even when Kafka is disabled.
 
 ## Prerequisites and local setup
 
-- Node.js 22.18.0, selected from `.nvmrc`
+- Node.js 22.23.1, selected from `.nvmrc`
 - pnpm 9.15.9
 - PostgreSQL reachable through `DATABASE_URL`
 - Kafka unless `DISABLE_KAFKA=true`
@@ -86,11 +86,20 @@ details.
 | `KAFKA_CLIENT_CERT_PASSPHRASE` | No | Optional private-key passphrase; non-empty values preserve exact whitespace, while an empty string is treated as omitted; secret value |
 | `KAFKA_CONNECTION_TIMEOUT` | Yes | Positive integer milliseconds |
 | `KAFKA_REQUEST_TIMEOUT` | Yes | Positive integer milliseconds |
+| `KAFKA_BROKER_TIMEOUT` | No | `5000`; positive integer broker-operation timeout, mapped independently from the client request deadline |
+| `KAFKA_SESSION_TIMEOUT` | No | `60000`; positive integer consumer-group session timeout |
+| `KAFKA_HEARTBEAT_INTERVAL` | No | `3000`; positive integer consumer-group heartbeat interval |
 | `KAFKA_RETRY_ATTEMPTS` | Yes | Positive integer reconnect budget |
 | `KAFKA_INITIAL_RETRY_TIME` | Yes | Positive integer initial backoff milliseconds |
 | `KAFKA_MAX_RETRY_TIME` | Yes | Positive integer maximum backoff milliseconds |
 | `KAFKA_MAXBYTES` | Yes | Shared positive integer consumer fetch limit from `/config/common/global-appvar` |
 | `KAFKA_MAX_WAIT_TIME` | Yes | Positive integer consumer wait milliseconds |
+
+Kafka timing must also satisfy `KAFKA_MAX_WAIT_TIME <
+KAFKA_REQUEST_TIMEOUT`, `KAFKA_BROKER_TIMEOUT < KAFKA_REQUEST_TIMEOUT`, and
+`KAFKA_HEARTBEAT_INTERVAL + KAFKA_REQUEST_TIMEOUT <
+KAFKA_SESSION_TIMEOUT`. These relationships keep broker and fetch waits within
+the client deadline while leaving enough session time for a delayed heartbeat.
 
 When `DISABLE_KAFKA=true`, brokers, client ID, group ID, client certificate, and
 client key are not required. The remaining Kafka booleans and numeric settings
@@ -102,6 +111,24 @@ unusable passphrases, and cert/key mismatches are invalid configuration and fail
 before Kafka startup. A valid mTLS configuration with an unreachable broker is
 a runtime availability condition instead: the HTTP listener still starts while
 Kafka enters its bounded reconnect flow.
+
+## Kafka client and recovery
+
+The consumer uses exactly `@platformatic/kafka` 2.8.0. It subscribes in
+committed-offset mode, preserves `latest` as the first-run fallback, and passes
+the deployment-controlled `KAFKA_MAXBYTES` value on every subscription.
+Platformatic 2.x increased its implicit consumer default to 50 MiB, but this
+service never uses that implicit value. The shared setting (1 MiB in
+`.env.sample`) remains authoritative, so a hard-coded 10 MiB compatibility cap
+is neither needed nor introduced.
+
+Consumer-client errors, message-stream errors or termination, and failed
+autocommit operations all enter the same bounded external reconnect lifecycle.
+Each attempt creates a fresh consumer, uses equal-jitter exponential backoff,
+and cannot report `ready` if the replacement client fails while startup is
+settling. Shutdown invalidates current generations, cancels pending backoff,
+waits for in-flight email processing, and contains late errors from resources
+whose asynchronous close failed.
 
 ## Message compatibility and SendGrid mapping
 
@@ -192,7 +219,7 @@ state. Unhealthy responses use the same schema with `status: "unhealthy"` and
 
 ## Container startup and deployment
 
-The multi-stage image uses Node 22.18.0, builds with pnpm 9.15.9, retains only
+The multi-stage image uses Node 22.23.1, builds with pnpm 9.15.9, retains only
 production dependencies, runs as the unprivileged `node` user, and exposes the
 development service port 6100. The executable `appStartUp.sh` uses fail-fast
 shell semantics and performs startup in this order:

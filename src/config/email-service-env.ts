@@ -28,6 +28,15 @@ export const DEFAULT_EMAIL_RETRY_CRON = '0 */2 * * * *';
 /** Default retry eligibility window in milliseconds: 24 hours. */
 export const DEFAULT_EMAIL_RETRY_MAX_AGE_MS = 86_400_000;
 
+/** Default Platformatic request timeout for one broker operation. */
+export const DEFAULT_KAFKA_BROKER_TIMEOUT = 5_000;
+
+/** Default Platformatic consumer-group session timeout. */
+export const DEFAULT_KAFKA_SESSION_TIMEOUT = 60_000;
+
+/** Default interval between Platformatic consumer heartbeats. */
+export const DEFAULT_KAFKA_HEARTBEAT_INTERVAL = 3_000;
+
 /** Stable safe error returned for every active Kafka mTLS validation failure. */
 export const KAFKA_MTLS_VALIDATION_ERROR = 'Invalid Kafka mTLS configuration';
 
@@ -120,6 +129,18 @@ export class EmailServiceEnv {
   @IsInt()
   @Min(1)
   KAFKA_REQUEST_TIMEOUT!: number;
+
+  @IsInt()
+  @Min(1)
+  KAFKA_BROKER_TIMEOUT!: number;
+
+  @IsInt()
+  @Min(1)
+  KAFKA_SESSION_TIMEOUT!: number;
+
+  @IsInt()
+  @Min(1)
+  KAFKA_HEARTBEAT_INTERVAL!: number;
 
   @IsInt()
   @Min(1)
@@ -351,6 +372,21 @@ export function validateEmailServiceEnv(
       environment.KAFKA_REQUEST_TIMEOUT,
       'KAFKA_REQUEST_TIMEOUT',
     ),
+    KAFKA_BROKER_TIMEOUT: parsePositiveInteger(
+      environment.KAFKA_BROKER_TIMEOUT,
+      'KAFKA_BROKER_TIMEOUT',
+      DEFAULT_KAFKA_BROKER_TIMEOUT,
+    ),
+    KAFKA_SESSION_TIMEOUT: parsePositiveInteger(
+      environment.KAFKA_SESSION_TIMEOUT,
+      'KAFKA_SESSION_TIMEOUT',
+      DEFAULT_KAFKA_SESSION_TIMEOUT,
+    ),
+    KAFKA_HEARTBEAT_INTERVAL: parsePositiveInteger(
+      environment.KAFKA_HEARTBEAT_INTERVAL,
+      'KAFKA_HEARTBEAT_INTERVAL',
+      DEFAULT_KAFKA_HEARTBEAT_INTERVAL,
+    ),
     KAFKA_RETRY_ATTEMPTS: parsePositiveInteger(
       environment.KAFKA_RETRY_ATTEMPTS,
       'KAFKA_RETRY_ATTEMPTS',
@@ -399,6 +435,32 @@ export function validateEmailServiceEnv(
     );
     throw new Error(
       `Invalid email service configuration: ${messages.join('; ')}`,
+    );
+  }
+
+  if (
+    validatedEnvironment.KAFKA_MAX_WAIT_TIME >=
+    validatedEnvironment.KAFKA_REQUEST_TIMEOUT
+  ) {
+    throw new Error(
+      'KAFKA_MAX_WAIT_TIME must be less than KAFKA_REQUEST_TIMEOUT',
+    );
+  }
+  if (
+    validatedEnvironment.KAFKA_BROKER_TIMEOUT >=
+    validatedEnvironment.KAFKA_REQUEST_TIMEOUT
+  ) {
+    throw new Error(
+      'KAFKA_BROKER_TIMEOUT must be less than KAFKA_REQUEST_TIMEOUT',
+    );
+  }
+  if (
+    validatedEnvironment.KAFKA_HEARTBEAT_INTERVAL +
+      validatedEnvironment.KAFKA_REQUEST_TIMEOUT >=
+    validatedEnvironment.KAFKA_SESSION_TIMEOUT
+  ) {
+    throw new Error(
+      'KAFKA_HEARTBEAT_INTERVAL plus KAFKA_REQUEST_TIMEOUT must be less than KAFKA_SESSION_TIMEOUT',
     );
   }
 

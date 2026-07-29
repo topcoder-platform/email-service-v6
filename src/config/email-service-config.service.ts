@@ -31,6 +31,9 @@ export interface KafkaConfig {
   clientCertPassphrase?: string;
   connectionTimeout: number;
   requestTimeout: number;
+  brokerTimeout: number;
+  sessionTimeout: number;
+  heartbeatInterval: number;
   retryAttempts: number;
   initialRetryTime: number;
   maxRetryTime: number;
@@ -110,6 +113,15 @@ export class EmailServiceConfigService {
         infer: true,
       }),
       requestTimeout: this.configService.get('KAFKA_REQUEST_TIMEOUT', {
+        infer: true,
+      }),
+      brokerTimeout: this.configService.get('KAFKA_BROKER_TIMEOUT', {
+        infer: true,
+      }),
+      sessionTimeout: this.configService.get('KAFKA_SESSION_TIMEOUT', {
+        infer: true,
+      }),
+      heartbeatInterval: this.configService.get('KAFKA_HEARTBEAT_INTERVAL', {
         infer: true,
       }),
       retryAttempts: this.configService.get('KAFKA_RETRY_ATTEMPTS', {
