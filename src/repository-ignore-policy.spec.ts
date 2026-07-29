@@ -107,6 +107,7 @@ describe('Docker build-context policy', () => {
         '**/.env',
         '**/.env.*',
         '**/.git/',
+        '**/.circleci/',
         '**/node_modules/',
         '**/dist/',
         '**/coverage/',
@@ -148,17 +149,22 @@ describe('Docker build-context policy', () => {
 describe('Dockerfile build and startup contract', () => {
   const dockerfile = readFileSync(resolve(projectRoot, 'Dockerfile'), 'utf8');
 
-  it('copies source and performs the frozen install, lint, and build', () => {
+  it('builds and prunes a frozen production dependency tree', () => {
     expect(dockerfile).toMatch(/^COPY\s+\.\s+\.\s*$/mu);
     expect(dockerfile).toMatch(
       /^RUN\s+pnpm install --frozen-lockfile(?:\s|$)/mu,
     );
-    expect(dockerfile).toMatch(/^RUN\s+pnpm (?:run )?lint\s*$/mu);
-    expect(dockerfile).toMatch(/^RUN\s+pnpm (?:run )?build\s*$/mu);
+    expect(dockerfile).toMatch(/RUN\s+pnpm lint\s+\\/mu);
+    expect(dockerfile).toMatch(/&&\s+pnpm build\s+\\/mu);
+    expect(dockerfile).toMatch(/&&\s+pnpm prune --prod\s*$/mu);
   });
 
-  it('prepares and starts the application startup script', () => {
-    expect(dockerfile).toMatch(/^RUN\s+chmod \+x appStartUp\.sh\s*$/mu);
+  it('runs the final startup image as an unprivileged user', () => {
+    expect(dockerfile).toMatch(
+      /^COPY\s+.*--chmod=0555\s+\/app\/appStartUp\.sh\s+\.\/appStartUp\.sh\s*$/mu,
+    );
+    expect(dockerfile).toMatch(/^USER\s+node\s*$/mu);
+    expect(dockerfile).toMatch(/^EXPOSE\s+6100\s*$/mu);
     expect(dockerfile).toMatch(
       /^CMD\s+\[\s*["']\.\/appStartUp\.sh["']\s*\]\s*$/mu,
     );

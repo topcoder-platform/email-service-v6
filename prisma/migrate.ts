@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { config } from 'dotenv';
 
 /**
- * Creates the configured PostgreSQL schema when it does not already exist.
+ * Checks for the configured PostgreSQL schema and creates it only when absent.
  *
  * This bootstrap runs before `prisma migrate deploy` so Prisma can create its
  * migration table and application objects in a fresh, non-public schema.
@@ -12,6 +12,10 @@ import { config } from 'dotenv';
  * were already exported by the deployment environment. All validation and
  * client setup occurs inside this asynchronous boundary so its caller can emit
  * one credential-free failure event for every bootstrap failure.
+ *
+ * Existing schemas are reused without requiring database-level schema-creation
+ * permission. If another bootstrap creates an initially absent schema first,
+ * the losing attempt rechecks and accepts the completed state.
  *
  * @returns A promise that resolves after the schema exists and Prisma disconnects.
  * @throws Rethrows environment, client setup, connection, schema creation, or
@@ -45,9 +49,32 @@ async function bootstrapSchema(): Promise<void> {
   const prisma = new PrismaClient({ adapter });
 
   try {
-    await prisma.$executeRawUnsafe(
-      `CREATE SCHEMA IF NOT EXISTS "${postgresSchema}"`,
-    );
+    const [schema] = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.schemata
+        WHERE schema_name = ${postgresSchema}
+      ) AS "exists"
+    `;
+
+    if (!schema?.exists) {
+      try {
+        await prisma.$executeRawUnsafe(`CREATE SCHEMA "${postgresSchema}"`);
+      } catch (error) {
+        const [createdConcurrently] = await prisma.$queryRaw<
+          Array<{ exists: boolean }>
+        >`
+          SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.schemata
+            WHERE schema_name = ${postgresSchema}
+          ) AS "exists"
+        `;
+        if (!createdConcurrently?.exists) {
+          throw error;
+        }
+      }
+    }
     console.log('database_schema_bootstrap_succeeded');
   } finally {
     await prisma.$disconnect();

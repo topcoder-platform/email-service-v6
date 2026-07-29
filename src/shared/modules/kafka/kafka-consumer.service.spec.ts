@@ -124,7 +124,7 @@ function createValidatedMtlsConfig(): EmailServiceConfigService {
     EMAIL_FROM: 'noreply@example.com',
     EMAIL_TEMPLATE_MAP:
       '{"notifications.email":"d-one","billing.email":"d-two"}',
-    KAFKA_BROKERS: 'unreachable-broker.invalid:9092',
+    KAFKA_URL: 'unreachable-broker.invalid:9092',
     KAFKA_CLIENT_ID: 'email-service-v6',
     KAFKA_GROUP_ID: 'email-workers',
     KAFKA_SSL_ENABLED: 'true',
@@ -137,13 +137,13 @@ function createValidatedMtlsConfig(): EmailServiceConfigService {
     KAFKA_RETRY_ATTEMPTS: '2',
     KAFKA_INITIAL_RETRY_TIME: '10',
     KAFKA_MAX_RETRY_TIME: '15',
-    KAFKA_MAX_BYTES: '2048',
+    KAFKA_MAXBYTES: '2048',
     KAFKA_MAX_WAIT_TIME: '250',
     DISABLE_KAFKA: 'false',
   });
 
   return createConfig({
-    brokers: environment.KAFKA_BROKERS,
+    brokers: environment.KAFKA_URL,
     clientId: environment.KAFKA_CLIENT_ID,
     groupId: environment.KAFKA_GROUP_ID,
     sslEnabled: environment.KAFKA_SSL_ENABLED,

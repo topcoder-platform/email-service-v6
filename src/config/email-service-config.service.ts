@@ -93,7 +93,7 @@ export class EmailServiceConfigService {
   /** @returns Kafka connection, fetch, and lifecycle retry settings. */
   get kafka(): KafkaConfig {
     return {
-      brokers: this.configService.get('KAFKA_BROKERS', { infer: true }),
+      brokers: this.configService.get('KAFKA_URL', { infer: true }),
       clientId: this.configService.get('KAFKA_CLIENT_ID', { infer: true }),
       groupId: this.configService.get('KAFKA_GROUP_ID', { infer: true }),
       sslEnabled: this.configService.get('KAFKA_SSL_ENABLED', { infer: true }),
@@ -121,7 +121,7 @@ export class EmailServiceConfigService {
       maxRetryTime: this.configService.get('KAFKA_MAX_RETRY_TIME', {
         infer: true,
       }),
-      maxBytes: this.configService.get('KAFKA_MAX_BYTES', { infer: true }),
+      maxBytes: this.configService.get('KAFKA_MAXBYTES', { infer: true }),
       maxWaitTime: this.configService.get('KAFKA_MAX_WAIT_TIME', {
         infer: true,
       }),

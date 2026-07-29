@@ -74,7 +74,7 @@ export class EmailServiceEnv {
   @IsArray()
   @IsString({ each: true })
   @IsNotEmpty({ each: true })
-  KAFKA_BROKERS!: string[];
+  KAFKA_URL!: string[];
 
   @ValidateIf((environment: EmailServiceEnv) => !environment.DISABLE_KAFKA)
   @IsString()
@@ -135,7 +135,7 @@ export class EmailServiceEnv {
 
   @IsInt()
   @Min(1)
-  KAFKA_MAX_BYTES!: number;
+  KAFKA_MAXBYTES!: number;
 
   @IsInt()
   @Min(1)
@@ -322,9 +322,9 @@ export function validateEmailServiceEnv(
       'EMAIL_RETRY_MAX_AGE_MS',
       DEFAULT_EMAIL_RETRY_MAX_AGE_MS,
     ),
-    KAFKA_BROKERS: parseCommaSeparatedList(
-      environment.KAFKA_BROKERS,
-      'KAFKA_BROKERS',
+    KAFKA_URL: parseCommaSeparatedList(
+      environment.KAFKA_URL,
+      'KAFKA_URL',
       disableKafka,
     ),
     KAFKA_CLIENT_ID: disableKafka
@@ -363,9 +363,9 @@ export function validateEmailServiceEnv(
       environment.KAFKA_MAX_RETRY_TIME,
       'KAFKA_MAX_RETRY_TIME',
     ),
-    KAFKA_MAX_BYTES: parsePositiveInteger(
-      environment.KAFKA_MAX_BYTES,
-      'KAFKA_MAX_BYTES',
+    KAFKA_MAXBYTES: parsePositiveInteger(
+      environment.KAFKA_MAXBYTES,
+      'KAFKA_MAXBYTES',
     ),
     KAFKA_MAX_WAIT_TIME: parsePositiveInteger(
       environment.KAFKA_MAX_WAIT_TIME,

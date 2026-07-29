@@ -35,9 +35,9 @@ unset normalized_database_url
 
 echo "Using PostgreSQL schema: ${POSTGRES_SCHEMA}"
 echo "Bootstrapping PostgreSQL schema"
-pnpm run db:migrate
+node dist/prisma/migrate.js
 
 echo "Running database migrations"
-pnpm exec prisma migrate deploy
+./node_modules/.bin/prisma migrate deploy
 
-exec node dist/src/main
+exec node dist/src/main.js
