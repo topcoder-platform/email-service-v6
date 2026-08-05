@@ -22,9 +22,18 @@ interface ConsumerListeners {
 interface StreamListeners {
   generation: number;
   error: (error: unknown) => void;
+  autocommit: (error?: unknown) => void;
   end: () => void;
   close: () => void;
 }
+
+/**
+ * Prevents a detached Kafka EventEmitter from escalating a late `error` event
+ * when its asynchronous close has failed and the lifecycle can no longer own it.
+ *
+ * @returns Nothing.
+ */
+const ignoreDetachedKafkaError = (): void => undefined;
 
 /**
  * Owns the non-blocking Kafka consumer lifecycle, sequential message handling,
@@ -46,6 +55,8 @@ export class KafkaConsumerService
   private shuttingDown = false;
   private startupPromise?: Promise<void>;
   private reconnectPromise?: Promise<void>;
+  private reconnectRequested = false;
+  private queuedReconnectFailureReason?: string;
   private readonly processingPromises = new Set<Promise<void>>();
   private cancelBackoff?: () => void;
 
@@ -159,6 +170,10 @@ export class KafkaConsumerService
 
     this.stream = stream;
     this.attachStreamListeners(stream, generation);
+    const queuedFailureReason = this.takeQueuedReconnectFailureReason();
+    if (queuedFailureReason !== undefined) {
+      throw new Error(queuedFailureReason);
+    }
     this.setStatus(KafkaConnectionState.Ready, 0);
     this.startSequentialProcessing(stream, generation);
   }
@@ -198,12 +213,18 @@ export class KafkaConsumerService
     const listeners: StreamListeners = {
       generation,
       error: (error: unknown) => this.requestReconnect(error, generation),
+      autocommit: (error?: unknown) => {
+        if (error !== undefined && error !== null) {
+          this.requestReconnect(error, generation);
+        }
+      },
       end: () =>
         this.requestReconnect('Kafka message stream ended', generation),
       close: () =>
         this.requestReconnect('Kafka message stream closed', generation),
     };
     stream.on('error', listeners.error);
+    stream.on('autocommit', listeners.autocommit);
     stream.on('end', listeners.end);
     stream.on('close', listeners.close);
     this.streamListeners = listeners;
@@ -264,6 +285,8 @@ export class KafkaConsumerService
       failureReason,
     );
     if (this.reconnectPromise !== undefined) {
+      this.reconnectRequested = true;
+      this.queuedReconnectFailureReason = failureReason;
       return;
     }
 
@@ -271,6 +294,15 @@ export class KafkaConsumerService
       () => {
         if (this.reconnectPromise === reconnectPromise) {
           this.reconnectPromise = undefined;
+          const queuedFailureReason = this.takeQueuedReconnectFailureReason();
+          if (
+            queuedFailureReason !== undefined &&
+            !this.shuttingDown &&
+            this.status.state !== KafkaConnectionState.Disabled &&
+            this.status.state !== KafkaConnectionState.Failed
+          ) {
+            this.requestReconnect(queuedFailureReason);
+          }
         }
       },
     );
@@ -295,7 +327,7 @@ export class KafkaConsumerService
       }
       this.setStatus(KafkaConnectionState.Reconnecting, attempt, failureReason);
       const completedBackoff = await this.waitForBackoff(
-        this.getBackoffMilliseconds(attempt),
+        this.getReconnectDelay(attempt),
       );
       if (!completedBackoff || this.shuttingDown) {
         return;
@@ -303,9 +335,15 @@ export class KafkaConsumerService
 
       try {
         await this.establishConnection();
+        const queuedFailureReason = this.takeQueuedReconnectFailureReason();
+        if (queuedFailureReason !== undefined) {
+          throw new Error(queuedFailureReason);
+        }
         return;
       } catch (error) {
-        failureReason = this.sanitizeFailureReason(error);
+        failureReason =
+          this.takeQueuedReconnectFailureReason() ??
+          this.sanitizeFailureReason(error);
         await this.cleanupResources();
       }
     }
@@ -337,6 +375,20 @@ export class KafkaConsumerService
       kafka.maxRetryTime,
       kafka.initialRetryTime * 2 ** (attempt - 1),
     );
+  }
+
+  /**
+   * Calculates an equal-jitter delay within one capped exponential backoff.
+   *
+   * @param attempt - One-based reconnect attempt number.
+   * @returns An integer between half and all of the capped delay, inclusive.
+   * @throws Never; validated configuration contains positive finite integers.
+   */
+  private getReconnectDelay(attempt: number): number {
+    const backoffMilliseconds = this.getBackoffMilliseconds(attempt);
+    const minimumDelay = Math.floor(backoffMilliseconds / 2);
+    const jitterRange = backoffMilliseconds - minimumDelay;
+    return minimumDelay + Math.floor(Math.random() * (jitterRange + 1));
   }
 
   /**
@@ -402,6 +454,7 @@ export class KafkaConsumerService
     const listeners = this.streamListeners;
     if (stream !== undefined && listeners !== undefined) {
       stream.off('error', listeners.error);
+      stream.off('autocommit', listeners.autocommit);
       stream.off('end', listeners.end);
       stream.off('close', listeners.close);
     }
@@ -426,23 +479,47 @@ export class KafkaConsumerService
   /**
    * Closes one Kafka resource and safely reports only its non-sensitive label.
    *
-   * @param resource - Stream or consumer with an asynchronous close method.
+   * @param resource - Event-emitting stream or consumer with an async close.
    * @param resourceType - Safe label identifying the resource category.
    * @returns A promise resolved whether closure succeeds or fails.
    * @throws Never; resource exceptions are logged and contained.
    */
   private async closeSafely(
-    resource: { close(force?: boolean): Promise<void> },
+    resource: {
+      close(force?: boolean): Promise<void>;
+      on(event: string, listener: (...arguments_: any[]) => void): unknown;
+      off(event: string, listener: (...arguments_: any[]) => void): unknown;
+    },
     resourceType: 'stream' | 'consumer',
   ): Promise<void> {
+    resource.off('error', ignoreDetachedKafkaError);
+    resource.on('error', ignoreDetachedKafkaError);
     try {
       await resource.close();
+      resource.off('error', ignoreDetachedKafkaError);
     } catch {
       this.logger.warn({
         event: 'kafka_resource_close_failed',
         resourceType,
       });
     }
+  }
+
+  /**
+   * Removes and returns a replacement-client failure queued during reconnect.
+   *
+   * @returns The sanitized queued reason, or `undefined` when no new reconnect
+   * was requested while the shared reconnect task was active.
+   * @throws Never; the method only reads and clears internal primitive state.
+   */
+  private takeQueuedReconnectFailureReason(): string | undefined {
+    const failureReason = this.reconnectRequested
+      ? (this.queuedReconnectFailureReason ??
+        'Replacement Kafka client failed during startup')
+      : undefined;
+    this.reconnectRequested = false;
+    this.queuedReconnectFailureReason = undefined;
+    return failureReason;
   }
 
   /**

@@ -1,6 +1,9 @@
 import {
   DEFAULT_EMAIL_RETRY_CRON,
   DEFAULT_EMAIL_RETRY_MAX_AGE_MS,
+  DEFAULT_KAFKA_BROKER_TIMEOUT,
+  DEFAULT_KAFKA_HEARTBEAT_INTERVAL,
+  DEFAULT_KAFKA_SESSION_TIMEOUT,
   KAFKA_MTLS_VALIDATION_ERROR,
   validateEmailServiceEnv,
 } from './email-service-env';
@@ -102,6 +105,13 @@ describe('validateEmailServiceEnv', () => {
     expect(environment.PORT).toBe(3000);
     expect(environment.KAFKA_URL).toEqual(['kafka-one:9092', 'kafka-two:9092']);
     expect(environment.KAFKA_MAXBYTES).toBe(1_048_576);
+    expect(environment.KAFKA_BROKER_TIMEOUT).toBe(DEFAULT_KAFKA_BROKER_TIMEOUT);
+    expect(environment.KAFKA_SESSION_TIMEOUT).toBe(
+      DEFAULT_KAFKA_SESSION_TIMEOUT,
+    );
+    expect(environment.KAFKA_HEARTBEAT_INTERVAL).toBe(
+      DEFAULT_KAFKA_HEARTBEAT_INTERVAL,
+    );
     expect(environment.EMAIL_TEMPLATE_OVERRIDE_KEY).toBe(
       'sendgrid_template_id',
     );
@@ -134,6 +144,52 @@ describe('validateEmailServiceEnv', () => {
 
     expect(environment.EMAIL_RETRY_CRON).toBe('30 */7 * * * *');
     expect(environment.EMAIL_RETRY_MAX_AGE_MS).toBe(7_200_000);
+  });
+
+  it('supports independent Kafka timing overrides', () => {
+    const environment = validateEmailServiceEnv(
+      createValidEnvironment({
+        KAFKA_BROKER_TIMEOUT: '4000',
+        KAFKA_SESSION_TIMEOUT: '70000',
+        KAFKA_HEARTBEAT_INTERVAL: '2500',
+      }),
+    );
+
+    expect(environment.KAFKA_BROKER_TIMEOUT).toBe(4_000);
+    expect(environment.KAFKA_SESSION_TIMEOUT).toBe(70_000);
+    expect(environment.KAFKA_HEARTBEAT_INTERVAL).toBe(2_500);
+  });
+
+  it.each([
+    [
+      'KAFKA_MAX_WAIT_TIME',
+      { KAFKA_MAX_WAIT_TIME: '30000' },
+      'KAFKA_MAX_WAIT_TIME must be less than KAFKA_REQUEST_TIMEOUT',
+    ],
+    [
+      'KAFKA_BROKER_TIMEOUT',
+      { KAFKA_BROKER_TIMEOUT: '30000' },
+      'KAFKA_BROKER_TIMEOUT must be less than KAFKA_REQUEST_TIMEOUT',
+    ],
+    [
+      'KAFKA_HEARTBEAT_INTERVAL',
+      { KAFKA_HEARTBEAT_INTERVAL: '30000' },
+      'KAFKA_HEARTBEAT_INTERVAL plus KAFKA_REQUEST_TIMEOUT must be less than KAFKA_SESSION_TIMEOUT',
+    ],
+  ])('rejects incompatible %s relationships', (_, overrides, message) => {
+    expect(() =>
+      validateEmailServiceEnv(createValidEnvironment(overrides)),
+    ).toThrow(message);
+  });
+
+  it.each([
+    'KAFKA_BROKER_TIMEOUT',
+    'KAFKA_SESSION_TIMEOUT',
+    'KAFKA_HEARTBEAT_INTERVAL',
+  ])('rejects an invalid optional %s value when supplied', (name) => {
+    expect(() =>
+      validateEmailServiceEnv(createValidEnvironment({ [name]: '0' })),
+    ).toThrow(`${name} must be a positive integer`);
   });
 
   it.each(['0', '-1', 'not-a-number'])(

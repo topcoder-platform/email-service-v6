@@ -94,6 +94,9 @@ export class PlatformaticKafkaClientFactory implements KafkaClientFactory {
       groupId: kafka.groupId,
       connectTimeout: kafka.connectionTimeout,
       requestTimeout: kafka.requestTimeout,
+      timeout: kafka.brokerTimeout,
+      sessionTimeout: kafka.sessionTimeout,
+      heartbeatInterval: kafka.heartbeatInterval,
       retries: false,
       ...(kafka.sslEnabled ? { tls: this.buildTlsOptions() } : {}),
     };

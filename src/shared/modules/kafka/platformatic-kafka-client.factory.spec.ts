@@ -32,6 +32,9 @@ function createConfig(
       clientCertPassphrase: KAFKA_MTLS_TEST_PASSPHRASE,
       connectionTimeout: 12_345,
       requestTimeout: 54_321,
+      brokerTimeout: 4_321,
+      sessionTimeout: 65_000,
+      heartbeatInterval: 2_500,
       retryAttempts: 5,
       initialRetryTime: 100,
       maxRetryTime: 1000,
@@ -72,6 +75,9 @@ describe('PlatformaticKafkaClientFactory', () => {
       groupId: 'email-workers',
       connectTimeout: 12_345,
       requestTimeout: 54_321,
+      timeout: 4_321,
+      sessionTimeout: 65_000,
+      heartbeatInterval: 2_500,
       retries: false,
       tls: {
         cert: KAFKA_MTLS_CLIENT_CERT,
@@ -104,7 +110,7 @@ describe('PlatformaticKafkaClientFactory', () => {
     );
   });
 
-  it('configures connection and request timeouts with no internal retries', async () => {
+  it('maps independent Kafka timings with no internal retries', async () => {
     const factory = new PlatformaticKafkaClientFactory(
       createConfig({ sslEnabled: false }),
       loader,
@@ -118,6 +124,9 @@ describe('PlatformaticKafkaClientFactory', () => {
       groupId: 'email-workers',
       connectTimeout: 12_345,
       requestTimeout: 54_321,
+      timeout: 4_321,
+      sessionTimeout: 65_000,
+      heartbeatInterval: 2_500,
       retries: false,
     });
   });

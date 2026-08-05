@@ -21,11 +21,25 @@ class TestMessageStream extends EventEmitter implements KafkaMessageStream {
   private readonly messages: KafkaMessage[] = [];
   private waiting?: () => void;
   private closed = false;
+  private closeFailure?: Error;
   readonly close = jest.fn((): Promise<void> => {
     this.closed = true;
     this.waiting?.();
-    return Promise.resolve();
+    return this.closeFailure === undefined
+      ? Promise.resolve()
+      : Promise.reject(this.closeFailure);
   });
+
+  /**
+   * Makes close end iteration normally but reject its resource-close promise.
+   *
+   * @param error - Error returned by the next and subsequent close attempts.
+   * @returns Nothing.
+   * @throws Never; the failure is retained until the close mock is invoked.
+   */
+  failClose(error: Error): void {
+    this.closeFailure = error;
+  }
 
   /**
    * Adds one message and wakes the active async iterator.
@@ -133,7 +147,10 @@ function createValidatedMtlsConfig(): EmailServiceConfigService {
     KAFKA_CA_CERT: KAFKA_MTLS_CA_CERT,
     KAFKA_CLIENT_CERT_PASSPHRASE: KAFKA_MTLS_TEST_PASSPHRASE,
     KAFKA_CONNECTION_TIMEOUT: '100',
-    KAFKA_REQUEST_TIMEOUT: '100',
+    KAFKA_REQUEST_TIMEOUT: '1000',
+    KAFKA_BROKER_TIMEOUT: '100',
+    KAFKA_SESSION_TIMEOUT: '5000',
+    KAFKA_HEARTBEAT_INTERVAL: '500',
     KAFKA_RETRY_ATTEMPTS: '2',
     KAFKA_INITIAL_RETRY_TIME: '10',
     KAFKA_MAX_RETRY_TIME: '15',
@@ -329,6 +346,85 @@ describe('KafkaConsumerService', () => {
     await service.onModuleDestroy();
   });
 
+  it('reconnects after an autocommit failure and ignores successful notices', async () => {
+    const firstStream = new TestMessageStream();
+    const firstConsumer = new TestConsumer(firstStream);
+    const secondStream = new TestMessageStream();
+    const secondConsumer = new TestConsumer(secondStream);
+    createConsumer
+      .mockResolvedValueOnce(firstConsumer)
+      .mockResolvedValueOnce(secondConsumer);
+    const service = createService(createConfig());
+    service.onApplicationBootstrap();
+    await flushMicrotasks();
+
+    firstStream.emit('autocommit', null);
+    await flushMicrotasks();
+    expect(createConsumer).toHaveBeenCalledTimes(1);
+
+    firstStream.emit('autocommit', new Error('offset commit failed'));
+    await flushMicrotasks();
+    await jest.advanceTimersByTimeAsync(10);
+    await flushMicrotasks();
+
+    expect(createConsumer).toHaveBeenCalledTimes(2);
+    expect(service.getStatus()).toEqual({
+      state: KafkaConnectionState.Ready,
+      reconnectAttempts: 0,
+    });
+    await service.onModuleDestroy();
+  });
+
+  it('rejects a replacement client that fails while its subscription settles', async () => {
+    const firstStream = new TestMessageStream();
+    const firstConsumer = new TestConsumer(firstStream);
+    const candidateStream = new TestMessageStream();
+    const candidateConsumer = new TestConsumer(candidateStream);
+    let resolveCandidateSubscription!: (stream: KafkaMessageStream) => void;
+    candidateConsumer.consume.mockImplementationOnce(
+      () =>
+        new Promise<KafkaMessageStream>((resolve) => {
+          resolveCandidateSubscription = resolve;
+        }),
+    );
+    const recoveredStream = new TestMessageStream();
+    const recoveredConsumer = new TestConsumer(recoveredStream);
+    createConsumer
+      .mockResolvedValueOnce(firstConsumer)
+      .mockResolvedValueOnce(candidateConsumer)
+      .mockResolvedValueOnce(recoveredConsumer);
+    const service = createService(createConfig());
+    service.onApplicationBootstrap();
+    await flushMicrotasks();
+
+    firstStream.emit('error', new Error('initial stream failure'));
+    await flushMicrotasks();
+    await jest.advanceTimersByTimeAsync(10);
+    await flushMicrotasks();
+
+    candidateConsumer.emit('error', new Error('candidate client failure'));
+    resolveCandidateSubscription(candidateStream);
+    await flushMicrotasks();
+
+    expect(service.getStatus()).toEqual({
+      state: KafkaConnectionState.Reconnecting,
+      reconnectAttempts: 2,
+      failureReason: 'candidate client failure',
+    });
+    expect(candidateStream.close).toHaveBeenCalledTimes(1);
+    expect(candidateConsumer.close).toHaveBeenCalledTimes(1);
+
+    await jest.advanceTimersByTimeAsync(15);
+    await flushMicrotasks();
+
+    expect(createConsumer).toHaveBeenCalledTimes(3);
+    expect(service.getStatus()).toEqual({
+      state: KafkaConnectionState.Ready,
+      reconnectAttempts: 0,
+    });
+    await service.onModuleDestroy();
+  });
+
   it('allows broker fallback to complete without recreating the consumer', async () => {
     const stream = new TestMessageStream();
     const consumer = new TestConsumer(stream);
@@ -484,6 +580,47 @@ describe('KafkaConsumerService', () => {
     expect(consumer.close).toHaveBeenCalledTimes(1);
     expect(jest.getTimerCount()).toBe(0);
     expect(createConsumer).toHaveBeenCalledTimes(1);
+  });
+
+  it('contains late errors after stream and consumer close failures', async () => {
+    const stream = new TestMessageStream();
+    stream.failClose(new Error('stream close failed'));
+    const consumer = new TestConsumer(stream);
+    consumer.close.mockRejectedValue(new Error('consumer close failed'));
+    createConsumer.mockResolvedValue(consumer);
+    const service = createService(createConfig());
+    service.onApplicationBootstrap();
+    await flushMicrotasks();
+
+    await expect(service.onModuleDestroy()).resolves.toBeUndefined();
+
+    expect(() =>
+      stream.emit('error', new Error('late stream error')),
+    ).not.toThrow();
+    expect(() =>
+      consumer.emit('error', new Error('late consumer error')),
+    ).not.toThrow();
+    expect(createConsumer).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('uses equal jitter within each capped reconnect delay', () => {
+    const service = createService(createConfig());
+    const getReconnectDelay = (
+      service as unknown as {
+        getReconnectDelay(attempt: number): number;
+      }
+    ).getReconnectDelay.bind(service);
+    const random = jest.spyOn(Math, 'random');
+
+    random.mockReturnValueOnce(0);
+    expect(getReconnectDelay(1)).toBe(5);
+    random.mockReturnValueOnce(0.999_999);
+    expect(getReconnectDelay(1)).toBe(10);
+    random.mockReturnValueOnce(0.999_999);
+    expect(getReconnectDelay(2)).toBe(15);
+
+    random.mockRestore();
   });
 
   it('sanitizes secrets from reconnect status and exhaustion logs', async () => {
