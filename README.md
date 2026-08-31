@@ -28,8 +28,8 @@ Prisma is initialized even when Kafka is disabled.
 
 ## Prerequisites and local setup
 
-- Node.js 22.23.1, selected from `.nvmrc`
-- pnpm 9.15.9
+- Node.js 26.5.1, selected from `.nvmrc`
+- pnpm 11.15.1
 - PostgreSQL reachable through `DATABASE_URL`
 - Kafka unless `DISABLE_KAFKA=true`
 - SendGrid credentials
@@ -37,7 +37,7 @@ Prisma is initialized even when Kafka is disabled.
 ```bash
 nvm use
 corepack enable
-corepack prepare pnpm@9.15.9 --activate
+corepack prepare pnpm@11.15.1 --activate
 pnpm install --frozen-lockfile
 cp .env.sample .env
 pnpm run db:migrate
@@ -219,9 +219,10 @@ state. Unhealthy responses use the same schema with `status: "unhealthy"` and
 
 ## Container startup and deployment
 
-The multi-stage image uses Node 22.23.1, builds with pnpm 9.15.9, retains only
-production dependencies, runs as the unprivileged `node` user, and exposes the
-development service port 6100. The executable `appStartUp.sh` uses fail-fast
+The multi-stage image uses Node 26.5.1, builds with pnpm 11.15.1, retains only
+production dependencies, uses Alpine's dynamically linked Node.js package and
+patched system OpenSSL, runs as an unprivileged application user, and exposes
+the development service port 6100. The executable `appStartUp.sh` uses fail-fast
 shell semantics and performs startup in this order:
 
 1. Validate required database settings and normalize the connection URL.
@@ -275,6 +276,6 @@ Run the project checks using the pinned Node version:
 nvm use
 pnpm lint
 pnpm build
-pnpm test -- --runInBand repository-ignore-policy.spec.ts
-pnpm test -- --runInBand
+pnpm test --runInBand repository-ignore-policy.spec.ts
+pnpm test --runInBand
 ```
