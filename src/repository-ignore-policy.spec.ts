@@ -133,6 +133,7 @@ describe('Docker build-context policy', () => {
     'prisma.config.ts',
     'package.json',
     'pnpm-lock.yaml',
+    'pnpm-workspace.yaml',
     'nest-cli.json',
     'tsconfig.json',
     'tsconfig.build.json',
@@ -161,9 +162,12 @@ describe('Dockerfile build and startup contract', () => {
 
   it('runs the final startup image as an unprivileged user', () => {
     expect(dockerfile).toMatch(
+      /adduser\s+-S\s+-D\s+-u\s+10001\s+-G\s+app\s+app/mu,
+    );
+    expect(dockerfile).toMatch(
       /^COPY\s+.*--chmod=0555\s+\/app\/appStartUp\.sh\s+\.\/appStartUp\.sh\s*$/mu,
     );
-    expect(dockerfile).toMatch(/^USER\s+node\s*$/mu);
+    expect(dockerfile).toMatch(/^USER\s+app\s*$/mu);
     expect(dockerfile).toMatch(/^EXPOSE\s+6100\s*$/mu);
     expect(dockerfile).toMatch(
       /^CMD\s+\[\s*["']\.\/appStartUp\.sh["']\s*\]\s*$/mu,
