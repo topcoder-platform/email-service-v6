@@ -4,7 +4,7 @@
   "description": "Topcoder v6 email service",
   "author": "",
   "private": true,
-  "packageManager": "pnpm@9.15.9",
+  "packageManager": "pnpm@11.15.1",
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build",
