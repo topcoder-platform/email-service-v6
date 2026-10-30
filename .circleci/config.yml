@@ -95,6 +95,8 @@ workflows:
             branches:
               only:
                 - develop
+            tags:
+              only: /^dev-.*/
       - build-prod:
           context: org-global
           serial-group: << pipeline.project.slug >>/deploy-prod
