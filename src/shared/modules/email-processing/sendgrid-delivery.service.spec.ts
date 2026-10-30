@@ -135,6 +135,40 @@ describe('SendGridDeliveryService', () => {
     expect(request).not.toHaveProperty('sendAt');
   });
 
+  it('maps several replyTo addresses to replyToList objects only', async () => {
+    send.mockResolvedValue([{ statusCode: 202 }, {}] as never);
+
+    await service.send('d-template', {
+      recipients: ['member@example.com'],
+      replyTo: [
+        'sales@example.com',
+        { email: 'lead@example.com', name: 'Lead' },
+      ],
+    });
+
+    const request = send.mock.calls[0][0];
+    expect(request).toMatchObject({
+      replyToList: [
+        { email: 'sales@example.com' },
+        { email: 'lead@example.com', name: 'Lead' },
+      ],
+    });
+    expect(request).not.toHaveProperty('replyTo');
+  });
+
+  it('maps a one-address replyTo list to a single replyTo', async () => {
+    send.mockResolvedValue([{ statusCode: 202 }, {}] as never);
+
+    await service.send('d-template', {
+      recipients: ['member@example.com'],
+      replyTo: ['sales@example.com'],
+    });
+
+    const request = send.mock.calls[0][0];
+    expect(request).toMatchObject({ replyTo: 'sales@example.com' });
+    expect(request).not.toHaveProperty('replyToList');
+  });
+
   it.each([
     ['cc', 'single-cc@example.com'],
     ['bcc', { email: 'single-bcc@example.com', name: 'Blind Copy' }],

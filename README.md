@@ -167,6 +167,10 @@ message to be skipped; it does not fall back to the topic map.
   service also maps attachments, personalizations, and optional `sendAt`.
 - Both mappings preserve categories, cc, and bcc. Missing or empty `from` and
   `replyTo` values use `EMAIL_FROM`.
+- `replyTo` is one address or a non-empty array of addresses. Two or more
+  addresses are sent as SendGrid `reply_to_list` (without `reply_to`, which
+  SendGrid does not accept alongside it); a one-item array is sent as
+  `reply_to`.
 
 ## Retry behavior
 

@@ -118,6 +118,17 @@ describe('EmailMessageNormalizer', () => {
     });
   });
 
+  it('preserves a replyTo address list', () => {
+    const replyTo = ['sales@example.com', { email: 'lead@example.com' }];
+
+    expect(
+      normalizer.normalize({ recipients: ['member@example.com'], replyTo }),
+    ).toEqual({
+      ready: true,
+      payload: { recipients: ['member@example.com'], replyTo },
+    });
+  });
+
   it.each([
     ['cc', 'single-cc@example.com'],
     ['bcc', { email: 'single-bcc@example.com', name: 'Blind Copy' }],
@@ -140,6 +151,8 @@ describe('EmailMessageNormalizer', () => {
   it.each([
     ['from', { email: '' }],
     ['replyTo', 42],
+    ['replyTo', []],
+    ['replyTo', ['reply@example.com', '']],
     ['data', []],
     ['categories', ['valid', 42]],
     ['cc', 42],
