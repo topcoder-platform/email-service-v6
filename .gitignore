@@ -62,3 +62,7 @@ id_ed25519
 *.crt-bundle
 *.p7b
 *.p7c
+
+# Infrastructure definitions and detailed AWS inventories are maintained privately.
+/deploy/iam/
+/deploy/*-baseline.json
