@@ -6,7 +6,9 @@ import sendGridMail = require('@sendgrid/mail');
 import { EmailServiceConfigService } from '../../../config/email-service-config.service';
 import { LoggerService } from '../global/logger.service';
 import {
+  EmailAddress,
   EmailRecipient,
+  EmailRecipientList,
   NormalizedEmailPayload,
 } from './email-processing.types';
 
@@ -70,12 +72,11 @@ export class SendGridDeliveryService {
     payload: NormalizedEmailPayload,
   ): MailDataRequired {
     const from = this.withDefault(payload.from);
-    const replyTo = this.withDefault(payload.replyTo);
     const common = {
       to: payload.recipients,
       templateId,
       from,
-      replyTo,
+      ...this.replyToFields(payload.replyTo),
       categories: payload.categories ?? [],
       cc: payload.cc ?? [],
       bcc: payload.bcc ?? [],
@@ -101,11 +102,37 @@ export class SendGridDeliveryService {
   }
 
   /**
+   * Maps the reply-to value to SendGrid's mutually exclusive reply fields.
+   *
+   * @param replyTo - Optional caller-provided address or address list.
+   * @returns `replyTo` for zero or one address (defaulted to the sender), or
+   * `replyToList` of address objects for two or more addresses.
+   * @remarks SendGrid rejects requests that set both `reply_to` and
+   * `reply_to_list`, and the SDK only accepts objects in the list.
+   * @throws Never; invalid address structures are rejected during normalization.
+   */
+  private replyToFields(
+    replyTo: EmailRecipientList | undefined,
+  ): { replyTo: EmailRecipient } | { replyToList: EmailAddress[] } {
+    if (!Array.isArray(replyTo)) {
+      return { replyTo: this.withDefault(replyTo) };
+    }
+    if (replyTo.length < 2) {
+      return { replyTo: this.withDefault(replyTo[0]) };
+    }
+    return {
+      replyToList: replyTo.map((address) =>
+        typeof address === 'string' ? { email: address } : address,
+      ),
+    };
+  }
+
+  /**
    * Applies the configured sender when an address is missing or empty.
    *
    * @param address - Optional caller-provided SendGrid address.
    * @returns The caller address or configured default sender.
-   * @remarks Used by buildRequest for both from and replyTo values.
+   * @remarks Used by buildRequest for from and by replyToFields for a single replyTo.
    * @throws Never; invalid address structures are rejected during normalization.
    */
   private withDefault(address: EmailRecipient | undefined): EmailRecipient {

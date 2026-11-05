@@ -46,7 +46,8 @@ export interface EmailPersonalization {
 export interface NormalizedEmailPayload {
   recipients: EmailRecipient[];
   from?: EmailRecipient;
-  replyTo?: EmailRecipient;
+  /** One reply-to address, or several (sent to SendGrid as `reply_to_list`). */
+  replyTo?: EmailRecipientList;
   data?: EmailObject;
   categories?: string | string[];
   cc?: EmailRecipientList;

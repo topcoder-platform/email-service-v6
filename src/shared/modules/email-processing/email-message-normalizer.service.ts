@@ -340,7 +340,7 @@ export class EmailMessageNormalizer {
   private hasValidOptionalFields(payload: EmailObject): boolean {
     return (
       (!payload.from || isAddress(payload.from)) &&
-      (!payload.replyTo || isAddress(payload.replyTo)) &&
+      (!payload.replyTo || isAddressList(payload.replyTo, true)) &&
       (payload.data === undefined || isObject(payload.data)) &&
       (!payload.categories || isCategoryList(payload.categories)) &&
       (!payload.cc || isAddressList(payload.cc, false)) &&
