@@ -30,7 +30,9 @@ describe('KafkaEmailOrchestratorService', () => {
   const createPending = jest.fn();
   const markSuccess = jest.fn();
   const markFailed = jest.fn();
+  const publish = jest.fn();
   const processingService = { prepare };
+  const emailSentPublisher = { publish };
   const deliveryService = { send };
   const attemptRepository = { createPending, markSuccess, markFailed };
   let errorLog: jest.SpyInstance;
@@ -40,7 +42,8 @@ describe('KafkaEmailOrchestratorService', () => {
     jest.clearAllMocks();
     prepare.mockReturnValue({ ready: true, templateId: 'd-template', payload });
     createPending.mockResolvedValue({ id: 'attempt-1' });
-    send.mockResolvedValue([{ statusCode: 202 }]);
+    send.mockResolvedValue({ messageId: 'sg-message-1' });
+    publish.mockResolvedValue(undefined);
     markSuccess.mockResolvedValue({ id: 'attempt-1' });
     markFailed.mockResolvedValue({ id: 'attempt-1' });
     errorLog = jest
@@ -50,6 +53,7 @@ describe('KafkaEmailOrchestratorService', () => {
       processingService as never,
       deliveryService as never,
       attemptRepository as never,
+      emailSentPublisher as never,
     );
   });
 
@@ -133,7 +137,12 @@ describe('KafkaEmailOrchestratorService', () => {
   it('marks a persisted attempt SUCCESS after accepted delivery', async () => {
     await service.processMessage(createMessage());
 
-    expect(markSuccess).toHaveBeenCalledWith('attempt-1');
+    expect(markSuccess).toHaveBeenCalledWith(
+      'attempt-1',
+      expect.any(Date),
+      undefined,
+      'sg-message-1',
+    );
     expect(markFailed).not.toHaveBeenCalled();
   });
 
@@ -174,5 +183,46 @@ describe('KafkaEmailOrchestratorService', () => {
     expect(errorLog).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'email_failure_persistence_failed' }),
     );
+  });
+
+  it('publishes an email-sent event after a successful correlated send', async () => {
+    prepare.mockReturnValue({
+      ready: true,
+      templateId: 'd-template',
+      payload: { ...payload, correlationId: 'submission-1:flow-1' },
+    });
+
+    await service.processMessage(createMessage());
+
+    expect(publish).toHaveBeenCalledWith({
+      correlationId: 'submission-1:flow-1',
+      sendgridMessageId: 'sg-message-1',
+      templateId: 'd-template',
+      sentAt: expect.any(Date),
+    });
+    expect(markSuccess.mock.invocationCallOrder[0]).toBeLessThan(
+      publish.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('publishes nothing for emails without a correlation id', async () => {
+    await service.processMessage(createMessage());
+
+    expect(markSuccess).toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('publishes nothing when the SendGrid send fails', async () => {
+    prepare.mockReturnValue({
+      ready: true,
+      templateId: 'd-template',
+      payload: { ...payload, correlationId: 'submission-1:flow-1' },
+    });
+    send.mockRejectedValueOnce(new Error('provider failed'));
+
+    await service.processMessage(createMessage());
+
+    expect(markFailed).toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
   });
 });

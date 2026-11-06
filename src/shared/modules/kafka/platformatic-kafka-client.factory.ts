@@ -3,9 +3,15 @@ import type {
   ConsumerOptions,
   Message,
   MessagesStream,
+  ProducerOptions,
 } from '@platformatic/kafka';
 import { EmailServiceConfigService } from '../../../config/email-service-config.service';
-import type { KafkaClientFactory, KafkaConsumerClient } from './kafka.types';
+import type {
+  KafkaClientFactory,
+  KafkaConsumerClient,
+  KafkaProducerClient,
+  KafkaProducerFactory,
+} from './kafka.types';
 
 /** Injection token for the native ESM package loader. */
 export const PLATFORMATIC_KAFKA_MODULE_LOADER = Symbol(
@@ -32,6 +38,9 @@ type PlatformaticKafkaModule = {
   Consumer: new (
     options: ConsumerOptions<Buffer, Buffer, Buffer, Buffer>,
   ) => PlatformaticConsumer;
+  Producer: new (
+    options: ProducerOptions<Buffer, Buffer, Buffer, Buffer>,
+  ) => KafkaProducerClient;
 };
 
 /** Loads the ESM-only Kafka package without CommonJS rewriting `import()`. */
@@ -48,7 +57,7 @@ const nativeDynamicImport = new Function(
 /**
  * Loads the installed Kafka package through a native dynamic-import boundary.
  *
- * @returns The ESM module containing the Platformatic Consumer constructor.
+ * @returns The ESM module containing the Platformatic Consumer and Producer constructors.
  * @throws Propagates package resolution or ESM evaluation failures.
  */
 export function loadPlatformaticKafka(): Promise<PlatformaticKafkaModule> {
@@ -56,11 +65,14 @@ export function loadPlatformaticKafka(): Promise<PlatformaticKafkaModule> {
 }
 
 /**
- * Constructs Platformatic Kafka consumers from validated application settings.
- * The lifecycle service owns reconnection, so package-level retries are disabled.
+ * Constructs Platformatic Kafka consumers and producers from validated
+ * application settings. The consumer lifecycle service owns reconnection, so
+ * package-level consumer retries are disabled.
  */
 @Injectable()
-export class PlatformaticKafkaClientFactory implements KafkaClientFactory {
+export class PlatformaticKafkaClientFactory
+  implements KafkaClientFactory, KafkaProducerFactory
+{
   /**
    * Creates a factory with validated config and an optional testable ESM loader.
    *
@@ -102,6 +114,32 @@ export class PlatformaticKafkaClientFactory implements KafkaClientFactory {
     };
     const platformaticKafka = await this.moduleLoader();
     return new platformaticKafka.Consumer(options);
+  }
+
+  /**
+   * Creates a producer on the consumer's brokers, client id, timeouts, and mTLS.
+   *
+   * @returns A producer that connects on its first send.
+   * @throws When the client identifier or TLS material is unavailable, or when
+   * the ESM package cannot load. TLS-enabled configuration never downgrades.
+   */
+  async createProducer(): Promise<KafkaProducerClient> {
+    const kafka = this.configService.kafka;
+    if (!kafka.clientId) {
+      throw new Error('Kafka client identifier is required');
+    }
+
+    const options: ProducerOptions<Buffer, Buffer, Buffer, Buffer> = {
+      bootstrapBrokers: kafka.brokers,
+      clientId: kafka.clientId,
+      connectTimeout: kafka.connectionTimeout,
+      requestTimeout: kafka.requestTimeout,
+      timeout: kafka.brokerTimeout,
+      retries: kafka.retryAttempts,
+      ...(kafka.sslEnabled ? { tls: this.buildTlsOptions() } : {}),
+    };
+    const platformaticKafka = await this.moduleLoader();
+    return new platformaticKafka.Producer(options);
   }
 
   /**

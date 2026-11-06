@@ -12,6 +12,12 @@ import {
   NormalizedEmailPayload,
 } from './email-processing.types';
 
+/** Provider result of an accepted SendGrid send. */
+export interface SendGridDeliveryResult {
+  /** SendGrid `X-Message-Id` response header, or null when SendGrid omits it. */
+  messageId: string | null;
+}
+
 /**
  * Delivers normalized messages through the configured SendGrid client.
  * Kafka orchestration and retry scheduling share this provider so persisted
@@ -40,14 +46,14 @@ export class SendGridDeliveryService {
    *
    * @param templateId - Resolved SendGrid template identifier.
    * @param payload - Normalized payload produced by EmailProcessingService.
-   * @returns The SendGrid SDK result.
+   * @returns The accepted send's SendGrid message id, when SendGrid returns one.
    * @remarks Initial and retry orchestration await this shared provider method.
    * @throws Propagates SendGrid delivery failures to the caller.
    */
-  send(
+  async send(
     templateId: string,
     payload: NormalizedEmailPayload,
-  ): ReturnType<typeof sendGridMail.send> {
+  ): Promise<SendGridDeliveryResult> {
     const request = this.buildRequest(templateId, payload);
     this.logger.log({
       event: 'email_delivery_started',
@@ -55,7 +61,26 @@ export class SendGridDeliveryService {
       recipientCount: payload.recipients.length,
       version: payload.version === 'v3' ? 'v3' : 'legacy',
     });
-    return sendGridMail.send(request);
+    const [response] = await sendGridMail.send(request);
+    return { messageId: this.messageId(response?.headers) };
+  }
+
+  /**
+   * Reads SendGrid's message id from the accepted send's response headers.
+   *
+   * @param headers - SDK response headers, which may be absent in mocks or proxies.
+   * @returns The first non-empty `x-message-id` value, or null.
+   * @throws Never; unexpected header shapes resolve to null.
+   */
+  private messageId(headers: unknown): string | null {
+    if (typeof headers !== 'object' || headers === null) {
+      return null;
+    }
+    const value: unknown = (headers as Record<string, unknown>)['x-message-id'];
+    const first: unknown = Array.isArray(value) ? value[0] : value;
+    return typeof first === 'string' && first.trim().length > 0
+      ? first.trim()
+      : null;
   }
 
   /**

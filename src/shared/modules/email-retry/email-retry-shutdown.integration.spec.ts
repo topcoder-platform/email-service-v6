@@ -81,13 +81,16 @@ describe('email retry application shutdown', () => {
       retryCount: 1,
       lastAttemptedAt: now,
       sentAt: null,
+      sendgridMessageId: null,
       createdAt: now,
       updatedAt: now,
     };
     const shutdownEvents: string[] = [];
-    const unresolvedDelivery = new Promise<never>((resolve) => {
-      resolveDelivery = () => resolve([{}] as never);
-    });
+    const unresolvedDelivery = new Promise<{ messageId: string | null }>(
+      (resolve) => {
+        resolveDelivery = () => resolve({ messageId: null });
+      },
+    );
     jest
       .spyOn(PrismaService.prototype, '$connect')
       .mockResolvedValue(undefined);

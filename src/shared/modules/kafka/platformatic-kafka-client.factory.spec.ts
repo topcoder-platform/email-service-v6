@@ -53,9 +53,15 @@ describe('PlatformaticKafkaClientFactory', () => {
     constructedOptions.push(options);
     return consumer;
   });
+  const producer = { send: jest.fn(), close: jest.fn() };
+  const Producer = jest.fn((options: unknown) => {
+    constructedOptions.push(options);
+    return producer;
+  });
   const loader = jest.fn(() =>
     Promise.resolve({
       Consumer,
+      Producer,
     }),
   ) as unknown as jest.MockedFunction<PlatformaticKafkaModuleLoader>;
 
@@ -152,5 +158,41 @@ describe('PlatformaticKafkaClientFactory', () => {
       'ESM package unavailable',
     );
     expect(Consumer).not.toHaveBeenCalled();
+  });
+
+  it('creates the email-sent producer on the consumer brokers, timeouts, and mTLS', async () => {
+    const factory = new PlatformaticKafkaClientFactory(createConfig(), loader);
+
+    await expect(factory.createProducer()).resolves.toBe(producer);
+
+    expect(constructedOptions[0]).toEqual({
+      bootstrapBrokers: ['kafka-one:9092', 'kafka-two:9092'],
+      clientId: 'email-service-v6',
+      connectTimeout: 12_345,
+      requestTimeout: 54_321,
+      timeout: 4_321,
+      retries: 5,
+      tls: {
+        cert: KAFKA_MTLS_CLIENT_CERT,
+        key: KAFKA_MTLS_ENCRYPTED_CLIENT_KEY,
+        ca: KAFKA_MTLS_CA_CERT,
+        passphrase: KAFKA_MTLS_TEST_PASSPHRASE,
+      },
+    });
+  });
+
+  it('creates a plaintext producer when TLS is disabled and requires a client id', async () => {
+    await new PlatformaticKafkaClientFactory(
+      createConfig({ sslEnabled: false }),
+      loader,
+    ).createProducer();
+    expect(constructedOptions[0]).not.toHaveProperty('tls');
+
+    await expect(
+      new PlatformaticKafkaClientFactory(
+        createConfig({ clientId: undefined }),
+        loader,
+      ).createProducer(),
+    ).rejects.toThrow('Kafka client identifier is required');
   });
 });

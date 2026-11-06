@@ -189,6 +189,57 @@ describe('SendGridDeliveryService', () => {
     },
   );
 
+  it('returns the SendGrid message id of the accepted send', async () => {
+    send.mockResolvedValue([
+      { statusCode: 202, headers: { 'x-message-id': 'sg-message-1' } },
+      {},
+    ] as never);
+
+    await expect(
+      service.send('d-template', { recipients: ['member@example.com'] }),
+    ).resolves.toEqual({ messageId: 'sg-message-1' });
+  });
+
+  it.each([
+    ['missing headers', { statusCode: 202 }],
+    ['a missing header', { statusCode: 202, headers: {} }],
+    ['an empty header', { statusCode: 202, headers: { 'x-message-id': ' ' } }],
+  ])('returns a null message id for %s', async (_case, response) => {
+    send.mockResolvedValue([response, {}] as never);
+
+    await expect(
+      service.send('d-template', { recipients: ['member@example.com'] }),
+    ).resolves.toEqual({ messageId: null });
+  });
+
+  it('uses the first value of a repeated message id header', async () => {
+    send.mockResolvedValue([
+      {
+        statusCode: 202,
+        headers: { 'x-message-id': ['sg-first', 'sg-second'] },
+      },
+      {},
+    ] as never);
+
+    await expect(
+      service.send('d-template', { recipients: ['member@example.com'] }),
+    ).resolves.toEqual({ messageId: 'sg-first' });
+  });
+
+  it('never sends the correlation id to SendGrid', async () => {
+    send.mockResolvedValue([{ statusCode: 202 }, {}] as never);
+
+    await service.send('d-v3-template', {
+      recipients: ['member@example.com'],
+      version: 'v3',
+      correlationId: 'submission-1:flow-1',
+    });
+
+    expect(JSON.stringify(send.mock.calls)).not.toContain(
+      'submission-1:flow-1',
+    );
+  });
+
   it('propagates SendGrid delivery failures without logging the error', async () => {
     const error = new Error('provider unavailable');
     send.mockRejectedValue(error);
