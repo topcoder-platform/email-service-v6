@@ -10,6 +10,7 @@ import { EmailServiceConfigService } from '../../../config/email-service-config.
 import type { NormalizedEmailPayload } from '../email-processing/email-processing.types';
 import { SendGridDeliveryService } from '../email-processing/sendgrid-delivery.service';
 import { LoggerService } from '../global/logger.service';
+import { EmailSentPublisherService } from '../kafka/email-sent-publisher.service';
 import { EmailAttemptRepository } from '../persistence/email-attempt.repository';
 
 /** Stable persisted description for retry delivery failures. */
@@ -39,6 +40,7 @@ export class EmailRetrySchedulerService
    * @param configService - Provider for the validated six-field cron schedule.
    * @param attemptRepository - Failed-attempt selection and status persistence.
    * @param deliveryService - Existing SendGrid delivery mapping and provider.
+   * @param emailSentPublisher - Publishes email-sent events for correlated emails.
    * @throws Never; construction only stores injected collaborators.
    */
   constructor(
@@ -46,6 +48,7 @@ export class EmailRetrySchedulerService
     private readonly configService: EmailServiceConfigService,
     private readonly attemptRepository: EmailAttemptRepository,
     private readonly deliveryService: SendGridDeliveryService,
+    private readonly emailSentPublisher: EmailSentPublisherService,
   ) {}
 
   /**
@@ -162,12 +165,14 @@ export class EmailRetrySchedulerService
     const attemptedAt = new Date();
     const retryCount = attempt.retryCount + 1;
     const metadata = { attemptId: attempt.id, retryCount };
+    const payload = attempt.payload as unknown as NormalizedEmailPayload;
 
+    let messageId: string | null;
     try {
-      await this.deliveryService.send(
+      ({ messageId } = await this.deliveryService.send(
         attempt.templateId,
-        attempt.payload as unknown as NormalizedEmailPayload,
-      );
+        payload,
+      ));
     } catch {
       this.logger.error({ event: 'email_retry_delivery_failed', ...metadata });
       try {
@@ -185,18 +190,29 @@ export class EmailRetrySchedulerService
       }
       return;
     }
+    // Taken once SendGrid has accepted the retry, so it is the actual send time.
+    const sentAt = new Date();
 
     try {
       await this.attemptRepository.markSuccess(
         attempt.id,
-        attemptedAt,
+        sentAt,
         retryCount,
+        messageId,
       );
       this.logger.log({ event: 'email_retry_succeeded', ...metadata });
     } catch {
       this.logger.error({
         event: 'email_retry_success_persistence_failed',
         ...metadata,
+      });
+    }
+    if (typeof payload.correlationId === 'string') {
+      await this.emailSentPublisher.publish({
+        correlationId: payload.correlationId,
+        sendgridMessageId: messageId,
+        templateId: attempt.templateId,
+        sentAt,
       });
     }
   }

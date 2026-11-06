@@ -1,6 +1,7 @@
 import {
   DEFAULT_EMAIL_RETRY_CRON,
   DEFAULT_EMAIL_RETRY_MAX_AGE_MS,
+  DEFAULT_EMAIL_SENT_TOPIC,
   DEFAULT_KAFKA_BROKER_TIMEOUT,
   DEFAULT_KAFKA_HEARTBEAT_INTERVAL,
   DEFAULT_KAFKA_SESSION_TIMEOUT,
@@ -99,6 +100,27 @@ function expectInvalidMtlsConfiguration(
 }
 
 describe('validateEmailServiceEnv', () => {
+  it('defaults the email-sent topic and lets an empty value disable publishing', () => {
+    expect(
+      validateEmailServiceEnv(createValidEnvironment()).EMAIL_SENT_TOPIC,
+    ).toBe(DEFAULT_EMAIL_SENT_TOPIC);
+    expect(DEFAULT_EMAIL_SENT_TOPIC).toBe('external.action.email.sent');
+    expect(
+      validateEmailServiceEnv(
+        createValidEnvironment({ EMAIL_SENT_TOPIC: ' custom.email.sent ' }),
+      ).EMAIL_SENT_TOPIC,
+    ).toBe('custom.email.sent');
+    expect(
+      validateEmailServiceEnv(createValidEnvironment({ EMAIL_SENT_TOPIC: '' }))
+        .EMAIL_SENT_TOPIC,
+    ).toBe('');
+    expect(() =>
+      validateEmailServiceEnv(
+        createValidEnvironment({ EMAIL_SENT_TOPIC: 'two topics' }),
+      ),
+    ).toThrow('EMAIL_SENT_TOPIC must not contain whitespace');
+  });
+
   it('parses a valid environment and applies the template override default', () => {
     const environment = validateEmailServiceEnv(createValidEnvironment());
 

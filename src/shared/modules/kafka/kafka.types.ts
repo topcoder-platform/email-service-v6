@@ -53,3 +53,21 @@ export interface KafkaConsumeOptions {
 export interface KafkaClientFactory {
   createConsumer(): Promise<KafkaConsumerClient>;
 }
+
+/** One message accepted by the producer boundary; values are pre-serialized buffers. */
+export interface KafkaProducerMessage {
+  topic: string;
+  key: Buffer;
+  value: Buffer;
+}
+
+/** Producer boundary used by the email-sent publisher and its focused tests. */
+export interface KafkaProducerClient {
+  send(options: { messages: KafkaProducerMessage[] }): Promise<unknown>;
+  close(force?: boolean): Promise<void>;
+}
+
+/** Factory boundary that creates the email-sent event producer. */
+export interface KafkaProducerFactory {
+  createProducer(): Promise<KafkaProducerClient>;
+}

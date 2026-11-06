@@ -40,6 +40,8 @@ export interface KafkaConfig {
   maxBytes: number;
   maxWaitTime: number;
   disabled: boolean;
+  /** Email-sent event topic; empty when publishing is disabled. */
+  emailSentTopic: string;
 }
 
 /**
@@ -138,6 +140,9 @@ export class EmailServiceConfigService {
         infer: true,
       }),
       disabled: this.configService.get('DISABLE_KAFKA', { infer: true }),
+      emailSentTopic: this.configService.get('EMAIL_SENT_TOPIC', {
+        infer: true,
+      }),
     };
   }
 }

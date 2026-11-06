@@ -29,6 +29,9 @@ const FALSEY_DEFAULT_OPTIONAL_FIELDS = [
   'bcc',
 ] as const;
 
+/** Caller correlation ids echoed on the email-sent event: printable ASCII without spaces. */
+const CORRELATION_ID_PATTERN = /^[\x21-\x7E]{1,200}$/;
+
 const V3_OPTIONAL_FIELDS = [
   'attachments',
   'personalizations',
@@ -238,7 +241,8 @@ export class EmailMessageNormalizer {
    * @remarks EmailProcessingService uses this as the first preparation step.
    * Falsey sender, copy, and category fields are omitted so delivery defaults
    * apply. Falsey v3-only fields are also omitted, while non-v3 messages drop
-   * all v3-only fields without validating them.
+   * all v3-only fields without validating them. A valid `correlationId` is kept
+   * for the email-sent event; an invalid one is dropped without skipping.
    * @throws Never; JSON parsing and structural failures become skip outcomes.
    */
   normalize(input: unknown): EmailNormalizationOutcome {
@@ -298,6 +302,13 @@ export class EmailMessageNormalizer {
           Object.assign(normalized, { [field]: payload[field] });
         }
       }
+    }
+    // An unusable correlation id only disables the email-sent event; it never skips the email.
+    if (
+      typeof payload.correlationId === 'string' &&
+      CORRELATION_ID_PATTERN.test(payload.correlationId)
+    ) {
+      normalized.correlationId = payload.correlationId;
     }
     const overrideKey = this.configService.email.templateOverrideKey;
     if (Object.prototype.hasOwnProperty.call(payload, overrideKey)) {
