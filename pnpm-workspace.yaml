@@ -1,6 +1,7 @@
 packages:
 - .
 overrides:
+  deepmerge: file:tools/deepmerge-compat
   '@hono/node-server': 2.0.10
   axios: 1.21.0
   brace-expansion@>=3: 5.0.12
