@@ -117,7 +117,8 @@ export class PlatformaticKafkaClientFactory
   }
 
   /**
-   * Creates a producer on the consumer's brokers, client id, timeouts, and mTLS.
+   * Creates a producer on the consumer's brokers, client id, timeouts, and mTLS,
+   * without client-level send retries.
    *
    * @returns A producer that connects on its first send.
    * @throws When the client identifier or TLS material is unavailable, or when
@@ -135,7 +136,9 @@ export class PlatformaticKafkaClientFactory
       connectTimeout: kafka.connectionTimeout,
       requestTimeout: kafka.requestTimeout,
       timeout: kafka.brokerTimeout,
-      retries: kafka.retryAttempts,
+      // The email-sent event is best-effort: a failed send is logged, not
+      // retried, so a broker outage never holds up email delivery.
+      retries: false,
       ...(kafka.sslEnabled ? { tls: this.buildTlsOptions() } : {}),
     };
     const platformaticKafka = await this.moduleLoader();

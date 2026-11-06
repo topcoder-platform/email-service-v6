@@ -160,7 +160,7 @@ describe('PlatformaticKafkaClientFactory', () => {
     expect(Consumer).not.toHaveBeenCalled();
   });
 
-  it('creates the email-sent producer on the consumer brokers, timeouts, and mTLS', async () => {
+  it('creates the email-sent producer on the consumer brokers, timeouts, and mTLS, without retries', async () => {
     const factory = new PlatformaticKafkaClientFactory(createConfig(), loader);
 
     await expect(factory.createProducer()).resolves.toBe(producer);
@@ -171,7 +171,7 @@ describe('PlatformaticKafkaClientFactory', () => {
       connectTimeout: 12_345,
       requestTimeout: 54_321,
       timeout: 4_321,
-      retries: 5,
+      retries: false,
       tls: {
         cert: KAFKA_MTLS_CLIENT_CERT,
         key: KAFKA_MTLS_ENCRYPTED_CLIENT_KEY,
