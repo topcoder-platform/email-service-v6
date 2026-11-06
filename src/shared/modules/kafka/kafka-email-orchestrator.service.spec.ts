@@ -205,6 +205,32 @@ describe('KafkaEmailOrchestratorService', () => {
     );
   });
 
+  it('records the send time once SendGrid has accepted the email', async () => {
+    const requested = new Date('2026-11-06T10:00:00.000Z');
+    const accepted = new Date('2026-11-06T10:00:05.000Z');
+    jest.useFakeTimers({ now: requested });
+    try {
+      send.mockImplementationOnce(() => {
+        jest.setSystemTime(accepted);
+        return Promise.resolve({ messageId: 'sg-message-1' });
+      });
+      prepare.mockReturnValue({
+        ready: true,
+        templateId: 'd-template',
+        payload: { ...payload, correlationId: 'submission-1:flow-1' },
+      });
+
+      await service.processMessage(createMessage());
+
+      expect(markSuccess.mock.calls[0][1]).toEqual(accepted);
+      expect(publish).toHaveBeenCalledWith(
+        expect.objectContaining({ sentAt: accepted }),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('publishes nothing for emails without a correlation id', async () => {
     await service.processMessage(createMessage());
 

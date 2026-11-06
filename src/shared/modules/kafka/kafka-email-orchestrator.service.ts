@@ -93,7 +93,6 @@ export class KafkaEmailOrchestratorService {
     }
 
     let messageId: string | null;
-    const sentAt = new Date();
     try {
       ({ messageId } = await this.deliveryService.send(
         preparation.templateId,
@@ -109,6 +108,8 @@ export class KafkaEmailOrchestratorService {
       }
       return;
     }
+    // Taken once SendGrid has accepted the request, so it is the actual send time.
+    const sentAt = new Date();
     if (attemptId !== undefined) {
       await this.markSuccess(attemptId, sentAt, messageId, correlation);
     }

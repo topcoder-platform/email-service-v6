@@ -11,7 +11,8 @@ import {
 
 /**
  * Provides the single email-sent publisher shared by initial Kafka delivery
- * and the failed-attempt retry scheduler.
+ * and the failed-attempt retry scheduler, and owns the one Kafka module loader
+ * and client factory that KafkaModule reuses for its consumer.
  */
 @Module({
   providers: [
@@ -26,6 +27,10 @@ import {
     },
     EmailSentPublisherService,
   ],
-  exports: [EmailSentPublisherService],
+  exports: [
+    EmailSentPublisherService,
+    PLATFORMATIC_KAFKA_MODULE_LOADER,
+    PlatformaticKafkaClientFactory,
+  ],
 })
 export class EmailSentModule {}

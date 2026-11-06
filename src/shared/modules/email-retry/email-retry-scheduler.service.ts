@@ -190,11 +190,13 @@ export class EmailRetrySchedulerService
       }
       return;
     }
+    // Taken once SendGrid has accepted the retry, so it is the actual send time.
+    const sentAt = new Date();
 
     try {
       await this.attemptRepository.markSuccess(
         attempt.id,
-        attemptedAt,
+        sentAt,
         retryCount,
         messageId,
       );
@@ -210,7 +212,7 @@ export class EmailRetrySchedulerService
         correlationId: payload.correlationId,
         sendgridMessageId: messageId,
         templateId: attempt.templateId,
-        sentAt: attemptedAt,
+        sentAt,
       });
     }
   }

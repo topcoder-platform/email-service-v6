@@ -306,6 +306,54 @@ describe('EmailRetrySchedulerService', () => {
     });
   });
 
+  it('records the retry send time once SendGrid has accepted the email', async () => {
+    const requested = new Date('2026-11-06T10:00:00.000Z');
+    const accepted = new Date('2026-11-06T10:00:05.000Z');
+    jest.useFakeTimers({ now: requested });
+    try {
+      send.mockImplementationOnce(() => {
+        jest.setSystemTime(accepted);
+        return Promise.resolve({ messageId: 'sg-retry-1' });
+      });
+      findRetryableFailed.mockResolvedValue([
+        createAttempt({
+          payload: {
+            recipients: ['secret-recipient@example.com'],
+            correlationId: 'submission-1:flow-1',
+          },
+        }),
+      ]);
+
+      await service.runRetryCycle();
+
+      expect(markSuccess.mock.calls[0][1]).toEqual(accepted);
+      expect(publish).toHaveBeenCalledWith(
+        expect.objectContaining({ sentAt: accepted }),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('keeps the pre-request time for failed retries', async () => {
+    const requested = new Date('2026-11-06T10:00:00.000Z');
+    jest.useFakeTimers({ now: requested });
+    try {
+      send.mockImplementationOnce(() => {
+        jest.setSystemTime(new Date('2026-11-06T10:00:05.000Z'));
+        return Promise.reject(new Error('provider failed'));
+      });
+      findRetryableFailed.mockResolvedValue([createAttempt()]);
+      jest.spyOn(console, 'error').mockImplementation();
+
+      await service.runRetryCycle();
+
+      expect(markFailed.mock.calls[0][2]).toEqual(requested);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('publishes nothing for uncorrelated or failed retries', async () => {
     findRetryableFailed.mockResolvedValue([
       createAttempt(),
