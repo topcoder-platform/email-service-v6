@@ -34,7 +34,7 @@ overrides:
   piscina@^4: 4.9.4
   baseline-browser-mapping: 2.11.0
   browserslist: 4.28.8
-  tc-core-library-js: https://codeload.github.com/topcoder-platform/tc-core-library-js/tar.gz/58de37670180e183e8378c3d203df0112a0414f6
+  tc-core-library-js: https://codeload.github.com/topcoder-platform/tc-core-library-js/tar.gz/c2df92b2227089909ab6e229df0ec6b658bb431a
 allowBuilds:
   '@nestjs/core': false
   '@parcel/watcher': true
