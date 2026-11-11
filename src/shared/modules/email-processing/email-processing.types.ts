@@ -56,6 +56,8 @@ export interface NormalizedEmailPayload {
   attachments?: EmailAttachment[];
   personalizations?: EmailPersonalization[];
   sendAt?: number;
+  /** Caller correlation id echoed on the email-sent event; never sent to SendGrid. */
+  correlationId?: string;
   [key: string]: unknown;
 }
 

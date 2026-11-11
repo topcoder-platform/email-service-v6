@@ -54,6 +54,7 @@ export class EmailAttemptRepository {
    * @param id - Email attempt identifier.
    * @param attemptedAt - Time of the successful provider call.
    * @param retryCount - Optional exact retry count owned by the retry caller.
+   * @param sendgridMessageId - SendGrid message id of the accepted send, when known.
    * @returns The updated email attempt.
    * @throws Propagates Prisma persistence errors, including a missing record.
    */
@@ -61,6 +62,7 @@ export class EmailAttemptRepository {
     id: string,
     attemptedAt: Date = new Date(),
     retryCount?: number,
+    sendgridMessageId?: string | null,
   ): Promise<EmailAttempt> {
     return this.prisma.emailAttempt.update({
       where: { id },
@@ -70,6 +72,7 @@ export class EmailAttemptRepository {
         sentAt: attemptedAt,
         lastAttemptedAt: attemptedAt,
         ...(retryCount === undefined ? {} : { retryCount }),
+        ...(sendgridMessageId === undefined ? {} : { sendgridMessageId }),
       },
     });
   }

@@ -164,6 +164,10 @@ export class EmailServiceEnv {
 
   @IsBoolean()
   DISABLE_KAFKA!: boolean;
+
+  /** Topic for email-sent events; an empty string disables publishing. */
+  @IsString()
+  EMAIL_SENT_TOPIC!: string;
 }
 
 /**
@@ -183,6 +187,30 @@ function requireString(
     throw new Error(`${name} is required`);
   }
   return value.trim();
+}
+
+/** Default topic for email-sent events consumed by callers such as forms-processor-v6. */
+export const DEFAULT_EMAIL_SENT_TOPIC = 'external.action.email.sent';
+
+/**
+ * Reads the email-sent topic, keeping an explicit empty value as "disabled".
+ *
+ * @param value - Raw EMAIL_SENT_TOPIC value.
+ * @returns The trimmed topic, the default when omitted, or '' to disable publishing.
+ * @throws {Error} When the value is not a string or contains whitespace.
+ */
+function parseEmailSentTopic(value: unknown): string {
+  if (value === undefined) {
+    return DEFAULT_EMAIL_SENT_TOPIC;
+  }
+  if (typeof value !== 'string') {
+    throw new Error('EMAIL_SENT_TOPIC must be a string');
+  }
+  const topic = value.trim();
+  if (/\s/.test(topic)) {
+    throw new Error('EMAIL_SENT_TOPIC must not contain whitespace');
+  }
+  return topic;
 }
 
 /**
@@ -408,6 +436,7 @@ export function validateEmailServiceEnv(
       'KAFKA_MAX_WAIT_TIME',
     ),
     DISABLE_KAFKA: disableKafka,
+    EMAIL_SENT_TOPIC: parseEmailSentTopic(environment.EMAIL_SENT_TOPIC),
   });
 
   const errors = validateSync(validatedEnvironment, {

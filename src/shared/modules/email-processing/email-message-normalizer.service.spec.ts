@@ -118,6 +118,51 @@ describe('EmailMessageNormalizer', () => {
     });
   });
 
+  it.each(['v3', undefined])(
+    'keeps a valid correlation id for a %s message',
+    (version) => {
+      expect(
+        normalizer.normalize({
+          recipients: ['member@example.com'],
+          ...(version ? { version } : {}),
+          correlationId:
+            '4f0c2a1e-6b7d-4e8f-9a01-2b3c4d5e6f70:lets-talk-sales-reply',
+        }),
+      ).toEqual({
+        ready: true,
+        payload: {
+          recipients: ['member@example.com'],
+          ...(version ? { version } : {}),
+          correlationId:
+            '4f0c2a1e-6b7d-4e8f-9a01-2b3c4d5e6f70:lets-talk-sales-reply',
+        },
+      });
+    },
+  );
+
+  it.each([
+    ['an empty string', ''],
+    ['whitespace', 'submission 1:flow'],
+    ['a non-ASCII value', 'submission-é'],
+    ['an over-long value', 'x'.repeat(201)],
+    ['a number', 42],
+    ['an object', { id: 'x' }],
+  ])(
+    'drops a correlation id that is %s without skipping the email',
+    (_case, correlationId) => {
+      expect(
+        normalizer.normalize({
+          recipients: ['member@example.com'],
+          version: 'v3',
+          correlationId,
+        }),
+      ).toEqual({
+        ready: true,
+        payload: { recipients: ['member@example.com'], version: 'v3' },
+      });
+    },
+  );
+
   it('preserves a replyTo address list', () => {
     const replyTo = ['sales@example.com', { email: 'lead@example.com' }];
 

@@ -4,6 +4,7 @@ import { EmailProcessingService } from '../email-processing/email-processing.ser
 import { SendGridDeliveryService } from '../email-processing/sendgrid-delivery.service';
 import { LoggerService } from '../global/logger.service';
 import { EmailAttemptRepository } from '../persistence/email-attempt.repository';
+import { EmailSentPublisherService } from './email-sent-publisher.service';
 import type { KafkaMessage } from './kafka.types';
 
 interface KafkaCorrelationMetadata {
@@ -29,12 +30,14 @@ export class KafkaEmailOrchestratorService {
    * @param processingService - Safe normalization and template preparation.
    * @param deliveryService - SendGrid provider boundary.
    * @param attemptRepository - Persistence boundary for delivery attempts.
+   * @param emailSentPublisher - Publishes email-sent events for correlated emails.
    * @throws Never; construction only stores injected collaborators.
    */
   constructor(
     private readonly processingService: EmailProcessingService,
     private readonly deliveryService: SendGridDeliveryService,
     private readonly attemptRepository: EmailAttemptRepository,
+    private readonly emailSentPublisher: EmailSentPublisherService,
   ) {}
 
   /**
@@ -89,14 +92,12 @@ export class KafkaEmailOrchestratorService {
       });
     }
 
+    let messageId: string | null;
     try {
-      await this.deliveryService.send(
+      ({ messageId } = await this.deliveryService.send(
         preparation.templateId,
         preparation.payload,
-      );
-      if (attemptId !== undefined) {
-        await this.markSuccess(attemptId, correlation);
-      }
+      ));
     } catch {
       this.logger.error({
         event: 'email_delivery_failed',
@@ -105,6 +106,21 @@ export class KafkaEmailOrchestratorService {
       if (attemptId !== undefined) {
         await this.markFailed(attemptId, correlation);
       }
+      return;
+    }
+    // Taken once SendGrid has accepted the request, so it is the actual send time.
+    const sentAt = new Date();
+    if (attemptId !== undefined) {
+      await this.markSuccess(attemptId, sentAt, messageId, correlation);
+    }
+    const correlationId = preparation.payload.correlationId;
+    if (correlationId !== undefined) {
+      await this.emailSentPublisher.publish({
+        correlationId,
+        sendgridMessageId: messageId,
+        templateId: preparation.templateId,
+        sentAt,
+      });
     }
   }
 
@@ -112,16 +128,25 @@ export class KafkaEmailOrchestratorService {
    * Marks a persisted attempt successful while containing update failures.
    *
    * @param attemptId - Persisted email-attempt identifier.
+   * @param sentAt - Time of the accepted provider call.
+   * @param messageId - SendGrid message id of the accepted send, when known.
    * @param correlation - Safe Kafka metadata used in structured logging.
    * @returns A promise resolved after the update or contained failure.
    * @throws Never; repository errors are logged without sensitive content.
    */
   private async markSuccess(
     attemptId: string,
+    sentAt: Date,
+    messageId: string | null,
     correlation: KafkaCorrelationMetadata,
   ): Promise<void> {
     try {
-      await this.attemptRepository.markSuccess(attemptId);
+      await this.attemptRepository.markSuccess(
+        attemptId,
+        sentAt,
+        undefined,
+        messageId,
+      );
     } catch {
       this.logger.error({
         event: 'email_success_persistence_failed',

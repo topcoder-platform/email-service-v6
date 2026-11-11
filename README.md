@@ -15,7 +15,10 @@ For an accepted Kafka message, the service:
 3. Resolves a SendGrid template from a payload override or the topic map.
 4. stores a normalized `PENDING` attempt in PostgreSQL.
 5. Sends the normalized payload through SendGrid.
-6. Marks the attempt `SUCCESS` or `FAILED` with its attempt timestamp.
+6. Marks the attempt `SUCCESS` (with SendGrid's message id) or `FAILED` with
+   its attempt timestamp.
+7. For an accepted email that carries a `correlationId`, publishes an
+   [email-sent event](#email-sent-event).
 
 Kafka broker connection happens without blocking HTTP startup. Configuration,
 Prisma initialization, and retry-schedule registration are startup-critical and
@@ -76,6 +79,7 @@ details.
 | `EMAIL_RETRY_CRON` | No | `0 */2 * * * *`; six-field cron including seconds |
 | `EMAIL_RETRY_MAX_AGE_MS` | No | `86400000` (24 hours); explicit values must be positive integers |
 | `DISABLE_KAFKA` | No | `false`; `true` disables consumer startup and reports Kafka as `disabled` |
+| `EMAIL_SENT_TOPIC` | No | `external.action.email.sent`; topic for [email-sent events](#email-sent-event). An empty value disables publishing |
 | `KAFKA_URL` | Unless Kafka is disabled | Shared comma-separated, scheme-less `host:port` broker addresses from `/config/common/global-appvar` |
 | `KAFKA_CLIENT_ID` | Unless Kafka is disabled | Kafka client identity |
 | `KAFKA_GROUP_ID` | Unless Kafka is disabled | Consumer group identity |
@@ -171,6 +175,43 @@ message to be skipped; it does not fall back to the topic map.
   addresses are sent as SendGrid `reply_to_list` (without `reply_to`, which
   SendGrid does not accept alongside it); a one-item array is sent as
   `reply_to`.
+
+## Email-sent event
+
+A caller that needs to link its own record to the SendGrid message adds a
+`correlationId` to the email payload: 1–200 printable ASCII characters without
+spaces (forms-processor-v6 uses `<submissionId>:<flowId>`). An invalid value is
+dropped without skipping the email. The id is stored with the normalized
+payload, so retries keep it, and it is never sent to SendGrid.
+
+After every accepted send of such an email (initial or retry), the service
+stores SendGrid's `X-Message-Id` on the attempt (`sendgridMessageId`) and
+produces one message to `EMAIL_SENT_TOPIC`, keyed by the correlation id, using
+the Kafka connection settings above:
+
+```json
+{
+  "topic": "external.action.email.sent",
+  "originator": "tc-email-service",
+  "timestamp": "2026-11-04T10:00:01.000Z",
+  "mime-type": "application/json",
+  "payload": {
+    "correlationId": "4f0c2a1e-6b7d-4e8f-9a01-2b3c4d5e6f70:lets-talk-sales-reply",
+    "sendgridMessageId": "sTp1pEXAMPLEmessageId",
+    "templateId": "d-0123456789abcdef0123456789abcdef",
+    "sentAt": "2026-11-04T10:00:00.000Z"
+  }
+}
+```
+
+`sendgridMessageId` is `null` when SendGrid's response omits the header. Emails
+without a `correlationId` publish nothing. Publishing is best-effort: a failure
+is logged (`email_sent_event_publish_failed`), never changes the attempt
+status, and is not retried, so consumers must tolerate a missing event. A
+correlated email that SendGrid accepts more than once (a crash before the
+`SUCCESS` update) produces one event per accepted send. The topic must exist
+on the cluster (or broker auto-creation must be enabled) before callers rely on
+it. `DISABLE_KAFKA=true` also disables publishing.
 
 ## Retry behavior
 
