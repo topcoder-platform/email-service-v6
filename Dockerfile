@@ -22,7 +22,7 @@ RUN pnpm lint \
   && pnpm prune --prod
 
 FROM ${NODE_IMAGE} AS production
-RUN apk upgrade --no-cache && apk add --no-cache 'zlib>=1.4-r0' \
+RUN apk upgrade --no-cache && apk add --no-cache 'libcrypto3>=3.5.9-r1' 'libssl3>=3.5.9-r1' 'zlib>=1.4-r0' \
   && apk add --no-cache 'zlib>=1.4-r0' bash \
   && rm -rf /usr/local/lib/node_modules /opt/yarn* /usr/local/include/node \
   && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg \
