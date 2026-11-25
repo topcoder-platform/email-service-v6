@@ -6,7 +6,7 @@ overrides:
   axios: 1.21.0
   brace-expansion@>=3: 5.0.12
   deepmerge-ts: 8.0.0
-  effect@^3.0.0: 3.22.0
+  effect@^3.0.0: 3.22.1
   file-type@>=13.0.0 <21.3.2: 21.3.2
   hono: 4.12.34
   ip-address: 10.7.5
