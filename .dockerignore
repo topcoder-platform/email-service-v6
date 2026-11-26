@@ -118,3 +118,4 @@ id_ed25519
 **/*.p7b
 *.p7c
 **/*.p7c
+**/*.tsbuildinfo

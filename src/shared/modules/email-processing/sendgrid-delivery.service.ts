@@ -1,8 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { MailDataRequired } from '@sendgrid/mail';
 // The SDK uses `export =`; a default import emits an undefined `.default` here.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import sendGridMail = require('@sendgrid/mail');
+type MailDataRequired = Exclude<
+  Parameters<typeof sendGridMail.send>[0],
+  unknown[]
+>;
 import { EmailServiceConfigService } from '../../../config/email-service-config.service';
 import { LoggerService } from '../global/logger.service';
 import {
