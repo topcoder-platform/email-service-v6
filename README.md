@@ -31,7 +31,7 @@ Prisma is initialized even when Kafka is disabled.
 
 ## Prerequisites and local setup
 
-- Node.js 26.12.1, selected from `.nvmrc`
+- Node.js 26.13.1, selected from `.nvmrc`
 - pnpm 11.15.1
 - PostgreSQL reachable through `DATABASE_URL`
 - Kafka unless `DISABLE_KAFKA=true`
@@ -264,7 +264,7 @@ state. Unhealthy responses use the same schema with `status: "unhealthy"` and
 
 ## Container startup and deployment
 
-The multi-stage image uses Node 26.12.1, builds with pnpm 11.15.1, retains only
+The multi-stage image uses Node 26.13.1, builds with pnpm 11.15.1, retains only
 production dependencies, uses a digest-pinned Node/Alpine base with updated
 system packages, runs as an unprivileged application user, and exposes
 the development service port 6100. The executable `appStartUp.sh` uses fail-fast
@@ -363,7 +363,7 @@ version, and pnpm build arguments are explicitly declared in the consuming stage
 
 ## Dependency security validation
 
-Use Node 26.12.1 and pnpm 11.15.1. The image pins the Node/Alpine base by digest,
+Use Node 26.13.1 and pnpm 11.15.1. The image pins the Node/Alpine base by digest,
 updates distribution packages, and removes package managers from the runtime.
 Prisma 7, SendGrid 8 and patched transitive packages are locked; the shared
 Topcoder library uses an immutable revision. Legacy tooling uses a tested

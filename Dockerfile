@@ -23,7 +23,7 @@ RUN pnpm lint \
 
 FROM alpine:3.24 AS production
 RUN apk upgrade --no-cache \
-    && apk add --no-cache ca-certificates 'nodejs-current~26' 'nodejs-current>=26.13.1-r0' bash 'zlib>=1.4-r0' 'libcrypto3>=3.5.9-r1' 'libssl3>=3.5.9-r1' \
+    && apk add --no-cache ca-certificates 'nodejs-current~26.13.1' bash 'zlib>=1.4-r0' 'libcrypto3>=3.5.9-r1' 'libssl3>=3.5.9-r1' \
     && addgroup -S app \
     && adduser -S -D -u 10001 -G app app
 
